@@ -1,0 +1,2408 @@
+     <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>词云测试器</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { 
+            font-family: 
+                -apple-system,           /* 🍎 苹果系统字体 - 英文优先 */
+                BlinkMacSystemFont,      /* 🍎 Chrome on macOS */
+                "PingFang SC",           /* 🍎 苹果苹方 - 中文优雅 */
+                "SF Pro Display",        /* 🍎 苹果专业字体 */
+                "Helvetica Neue",        /* 🍎 苹果经典字体 */
+                "Source Han Sans CN",    /* 📚 思源黑体 - 开源精品 */
+                "Noto Sans CJK SC",      /* 🌏 Google开源中文 */
+                "Microsoft YaHei",       /* 💻 微软雅黑 - Windows兼容 */
+                "Hiragino Sans GB",      /* 📱 冬青黑体 - 日系优雅 */
+                "Segoe UI", 
+                Roboto, 
+                Arial,
+                sans-serif; 
+            padding: 20px; 
+            background: #FFFFFF; /* 🍎 纯白背景 - 苹果式极简 */
+            color: #1D1D1F; /* 🍎 苹果深灰文字 */
+            margin: 0;
+            /* 🔤 优化字体渲染 */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #FFFFFF; /* 🍎 纯白容器 */
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        /* 🍎 一体化控制组件 - 完全对齐统计组件 */
+        .control-unified {
+            background: rgba(248, 249, 250, 0.85);
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04), 0 2px 4px rgba(0, 0, 0, 0.02);
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 32px;
+            align-items: center;
+        }
+        
+        /* 🍎 操作区域（右侧分隔线样式） */
+        .action-section {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding-left: 32px;
+            border-left: 1px solid rgba(0, 0, 0, 0.06); /* 分隔线 */
+            min-width: 200px; /* 保持最小宽度 */
+        }
+        
+        /* 🍎 配置区域 2x2 网格 */
+        .config-section {
+            flex: 1;
+        }
+        
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 16px 20px; /* 垂直和水平间距不同 */
+        }
+        
+        
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 0; /* 允许内容收缩 */
+        }
+        
+        /* 🍎 宽输入框样式 */
+        .input-wide {
+            width: 100%;
+        }
+        
+        /* 🍎 次要按钮组 */
+        .secondary-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        /* 🍃 轻盈标签样式 */
+        .input-group label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #6b7280;
+            margin-bottom: 6px;
+        }
+        
+        /* 🍎 苹果风格输入框样式 */
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 8px 14px;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 12px; /* 更圆润 */
+            font-size: 14px;
+            background: #ffffff;
+            color: #374151;
+            height: 36px;
+            box-sizing: border-box;
+            transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1); /* 苹果动画曲线 */
+            outline: none;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(0, 0, 0, 0.02); /* 微妙内阴影 */
+        }
+        
+        /* 🍎 苹果风格焦点状态 */
+        .input-group input:focus, .input-group select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1), 0 2px 6px rgba(0, 0, 0, 0.05);
+            transform: translateY(-0.5px); /* 微妙上移 */
+        }
+        
+        /* 🍎 苹果风格按钮组容器 */
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            justify-self: end;
+        }
+        
+        /* 🍃 轻盈按钮基础样式 */
+        .btn {
+            padding: 0 16px;
+            border: none;
+            border-radius: 12px; /* 更圆润 */
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            height: 36px;
+            transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1); /* 苹果动画曲线 */
+            white-space: nowrap;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1); /* 苹果风立体阴影 */
+        }
+        
+        /* 🍎 苹果风格次要按钮组 - 垂直布局 */
+        .secondary-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .secondary-actions .btn {
+            height: 32px;
+            font-size: 13px;
+            font-weight: 400;
+            border-radius: 12px;
+        }
+        
+        /* 🍎 苹果风格主按钮 */
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); /* 苹果风渐变 */
+            color: white;
+            box-shadow: 0 3px 6px rgba(59, 130, 246, 0.25), 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(59, 130, 246, 0.3), 0 2px 6px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* 🍎 苹果风格次要按钮 */
+        .btn-secondary {
+            background: #ffffff;
+            color: #6b7280;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        
+        .btn-secondary:hover {
+            background: #f8fafc;
+            color: #374151;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
+            border-color: rgba(0, 0, 0, 0.12);
+        }
+        
+        .btn-export {
+            background: #34C759; /* 🎯 导出按钮 - 绿色 */
+            color: white;
+            border: 1px solid #2eac4a;
+        }
+        
+        .btn-export:hover {
+            background: #2eac4a; /* 🎯 悬停 - 深绿色 */
+        }
+        
+        /* 🍎 苹果风格统计卡片 - 与上方组件完全对齐 */
+        .stats {
+            background: rgba(248, 249, 250, 0.85);
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04), 0 2px 4px rgba(0, 0, 0, 0.02);
+            display: grid;
+            grid-template-columns: 1fr auto; /* 与上方组件保持一致 */
+            gap: 32px; /* 与上方组件保持一致 */
+            align-items: center;
+        }
+        
+        /* 🍎 统计数据区域 */
+        .stats-data {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            align-items: center;
+        }
+        
+        /* 🍎 苹果风格统计项 */
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        
+        /* 🍃 轻盈统计数值 */
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #3b82f6;
+            line-height: 1.2;
+            margin-bottom: 2px;
+        }
+        
+        /* 🍃 轻盈统计标签 */
+        .stat-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #6b7280;
+        }
+        
+        /* 🍎 导出操作区域 - 与上方操作区域对齐 */
+        .export-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* 与上方secondary-actions保持一致 */
+            padding-left: 32px;
+            border-left: 1px solid rgba(0, 0, 0, 0.06); /* 与上方分隔线保持一致 */
+            min-width: 200px; /* 与上方action-section保持一致 */
+        }
+        
+        /* 🍎 导出按钮 - 与上方次要按钮完全一致 */
+        .btn-compact {
+            font-size: 13px;
+            font-weight: 400;
+            height: 32px; /* 与上方secondary-actions按钮一致 */
+            padding: 0 16px; /* 与上方按钮保持一致 */
+            border-radius: 12px;
+            background: #ffffff;
+            color: #6b7280; /* 与上方次要按钮颜色一致 */
+            border: 1px solid rgba(0, 0, 0, 0.08); /* 与上方次要按钮一致 */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+            width: 100%; /* 全宽与上方按钮一致 */
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .btn-compact:hover {
+            background: #f8fafc;
+            color: #374151; /* 与上方次要按钮悬停颜色一致 */
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
+            border-color: rgba(0, 0, 0, 0.12);
+        }
+        
+        .wordcloud-container {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: #ffffff;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* 词云节点样式 - 立体阴影优化版 */
+        .word-node {
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            /* 🎨 简洁无阴影设计 */
+        }
+        
+        .word-node:hover {
+            transform: scale(1.05) translateY(-1px); /* 🎨 轻微浮起效果 */
+            /* 🎨 hover时增强阴影 */
+            filter: drop-shadow(0 6px 16px rgba(0,0,0,0.2)) drop-shadow(0 3px 6px rgba(0,0,0,0.3)) !important;
+        }
+        
+        .word-node.core {
+            fill: #007AFF; /* 🎨 核心节点 - 蓝色，与参考图中心节点一致 */
+            stroke: rgba(255,255,255,0.95);
+            stroke-width: 2;
+            /* 🎨 优雅立体阴影 - 苹果风格深度感 */
+            filter: drop-shadow(0 4px 12px rgba(0,122,255,0.25)) drop-shadow(0 2px 4px rgba(0,122,255,0.4));
+        }
+        
+        .word-node.fuzzy {
+            /* 动态填充由getDynamicMorandiColor函数计算 */
+            stroke: rgba(255,255,255,0.7);
+            stroke-width: 1.5;
+            transition: all 0.4s ease;
+            /* 🎨 柔和灰色阴影 - 与灰色调节点匹配 */
+            filter: drop-shadow(0 3px 8px rgba(0,0,0,0.15)) drop-shadow(0 1px 3px rgba(0,0,0,0.2));
+        }
+        
+        .word-node.fuzzy.dimmed {
+            opacity: 0.5 !important; /* 用透明度而非色彩变化 */
+        }
+        
+        .word-node.fuzzy.active-path {
+            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.2)) brightness(1.05);
+            animation: gentle-pulse 2s ease-in-out infinite;
+        }
+        
+        /* 🔗 融合节点样式 */
+        .word-node.fusion {
+            fill: #8A8A8A; /* 🎨 融合节点 - 浅灰色，与参考图次要节点一致 */
+            stroke: rgba(255,255,255,0.8);
+            stroke-width: 2;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+            position: relative;
+        }
+        
+        .word-node.fusion::before {
+            content: "⚡";
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            font-size: 8px;
+            color: #8A8A8A; /* 🎨 图标颜色 - 浅灰色 */
+            pointer-events: none;
+        }
+        
+        .word-node.selected {
+            filter: drop-shadow(0 3px 8px rgba(0,0,0,0.25)) brightness(1.1);
+        }
+        
+        @keyframes gentle-pulse {
+            0%, 100% { 
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.2)) brightness(1.05);
+            }
+            50% { 
+                filter: drop-shadow(0 3px 8px rgba(0,0,0,0.25)) brightness(1.1);
+            }
+        }
+        
+        .word-node:hover {
+            stroke-width: 3;
+            transform: scale(1.05);
+        }
+        
+        .word-text {
+            text-anchor: middle;
+            dominant-baseline: central;
+            fill: white;
+            font-weight: 500; /* 🍎 苹果推荐的中等字重，更精致 */
+            pointer-events: none;
+            /* 🎨 优雅文字阴影 - 轻微深度感 */
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25));
+            -webkit-font-smoothing: antialiased; /* 🍎 苹果字体平滑 */
+            /* 🍎 完整苹果字体栈 - 中英文完美支持 */
+            font-family: 
+                -apple-system,
+                BlinkMacSystemFont,
+                "SF Pro Display",         /* 🍎 苹果专业字体 */
+                "SF Pro Text",            /* 🍎 苹果文本字体 */
+                "PingFang SC",            /* 🍎 苹果中文字体 */
+                "Helvetica Neue",
+                "Source Han Sans CN",
+                sans-serif;
+            letter-spacing: -0.005em; /* 🍎 苹果风格紧密字距 */
+            /* 🎨 简洁文字设计 */
+        }
+        
+        .expand-btn {
+            fill: rgba(0,122,255,0.15); /* 🎨 扩展按钮 - 蓝色半透明，与中心节点一致 */
+            stroke: #007AFF; /* 🎨 边框 - 蓝色，与中心节点一致 */
+            stroke-width: 1.5;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .word-group:hover .expand-btn {
+            opacity: 0.9;
+        }
+        
+        .expand-btn:hover {
+            opacity: 1;
+            fill: rgba(0,122,255,0.25);
+            transform: scale(1.05);
+        }
+        
+        .expand-icon {
+            fill: #007AFF; /* 🎨 扩展图标 - 蓝色，与中心节点一致 */
+            text-anchor: middle;
+            dominant-baseline: central;
+            font-size: 10px;
+            font-weight: 600;
+            pointer-events: none;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+        }
+        
+        .selected-words {
+            margin-top: 20px;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .selected-words h3 {
+            margin: 0 0 12px 0;
+            color: #495057;
+            font-size: 16px;
+        }
+        
+        .selected-word-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .selected-word-tag {
+            background: #007AFF; /* 🎨 选中标签 - 蓝色，与中心节点一致 */
+            color: white;
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        /* 🍎 苹果风格调试面板 - 与上方组件统一 */
+        .debug-panel {
+            margin-top: 20px;
+            background: rgba(248, 249, 250, 0.85);
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            border-radius: 16px;
+            padding: 20px 24px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04), 0 2px 4px rgba(0, 0, 0, 0.02);
+        }
+        
+        .debug-panel h3 {
+            margin: 0 0 14px 0;
+            color: #374151;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+        
+        .debug-info {
+            font-family: 'SF Mono', Monaco, Menlo, monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #6b7280;
+            background: rgba(255, 255, 255, 0.6);
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 0, 0, 0.03);
+        }
+        
+        /* 🍎 苹果风格核心词节点列表 */
+        .core-nodes-list {
+            margin-bottom: 18px;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 12px;
+            border: 1px solid rgba(0, 0, 0, 0.03);
+            color: #6b7280;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        /* 连线样式 - 优雅曲线版 */
+        .word-link {
+            stroke: #8E8E93;
+            stroke-width: 2;
+            stroke-opacity: 0.4;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            fill: none;
+            stroke-linecap: round;
+        }
+        
+        .word-link:hover {
+            stroke: #FF3B30;
+            stroke-width: 3;
+            stroke-opacity: 0.8;
+            /* 简洁连线设计 */
+        }
+        
+        .word-link.selected {
+            stroke: #FF3B30;
+            stroke-width: 3;
+            stroke-opacity: 1;
+            /* 简洁选中连线设计 */
+        }
+        
+        /* 语义路径连线样式 - 参考图配色方案 */
+        .semantic-link {
+            pointer-events: none;
+            transition: all 0.4s ease;
+        }
+        
+        /* 主要连接 - 蓝色实线，表示强关联（如：运动康复→功能恢复训练） */
+        .semantic-link.solid {
+            stroke: #007AFF; /* 🎨 蓝色实线 - 与中心节点一致 */
+            stroke-width: 2;
+            stroke-opacity: 0.8;
+            stroke-dasharray: none;
+            filter: drop-shadow(0 1px 3px rgba(0,122,255,0.3)); /* 🎨 添加蓝色阴影 */
+        }
+        
+        /* 次要连接 - 灰色虚线，表示一般关联（如：运动康复→功能性） */
+        .semantic-link.dashed {
+            stroke: #666; /* 🎨 灰色虚线 - 表示次要关联 */
+            stroke-width: 1.5;
+            stroke-opacity: 0.7;
+            stroke-dasharray: 6,3;
+        }
+        
+        /* 连线模式样式 */
+        .connection-mode {
+            background: #007AFF !important; /* 🎨 蓝色，与中心节点一致 */
+            color: white;
+        }
+        
+        .node-connecting {
+            fill: #007AFF !important; /* 🎨 蓝色，与中心节点一致 */
+            stroke: #007AFF; /* 🎨 蓝色，与中心节点一致 */
+            stroke-width: 2;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        
+        /* 拖拽状态样式 */
+        .word-group.dragging {
+            /* 简洁控制面板设计 */
+            z-index: 1000;
+        }
+        
+        .word-group.dragging .word-node {
+            stroke-width: 3;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>词云测试器</h1>
+            <p>基于语义路径的智能词汇扩展与可视化</p>
+        </div>
+        
+        <!-- 🍎 一体化控制组件 -->
+        <div class="control-unified">
+            <!-- 配置区域 -->
+            <div class="config-section">
+                <div class="config-grid">
+                    <div class="input-group">
+                        <label for="coreWords">核心词汇</label>
+                        <input type="text" id="coreWords" placeholder="潮汕菜">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="newCoreWord">动态添加</label>
+                        <input type="text" id="newCoreWord" placeholder="输入新核心词" onkeypress="handleNewWordKeypress(event)">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="nodeCount">节点数量</label>
+                        <select id="nodeCount">
+                            <option value="10">精简(10个)</option>
+                            <option value="15" selected>适中(15个)</option>
+                            <option value="25">丰富(25个)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="layoutMode">布局模式</label>
+                        <select id="layoutMode">
+                            <option value="radial">径向分布</option>
+                            <option value="cluster">聚类分布</option>
+                            <option value="force">自由力导向</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 操作区域 -->
+            <div class="action-section">
+                <button class="btn btn-primary" onclick="generateWordCloud()">生成词云</button>
+                <div class="secondary-actions">
+                    <button class="btn btn-secondary" onclick="addNewCoreWord()">添加节点</button>
+                    <button class="btn btn-secondary" onclick="clearSelection()">清空选择</button>
+                    <button class="btn btn-secondary" onclick="toggleConnectionMode()" id="connectionBtn">连线模式</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <!-- 统计数据区域 -->
+            <div class="stats-data">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalNodes">0</div>
+                    <div class="stat-label">总节点数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="selectedNodes">0</div>
+                    <div class="stat-label">已选择</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="coreNodes">0</div>
+                    <div class="stat-label">核心词</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="fuzzyNodes">0</div>
+                    <div class="stat-label">模糊词</div>
+                </div>
+            </div>
+            
+            <!-- 🍎 导出操作区域 -->
+            <div class="export-actions">
+                <button class="btn-compact" onclick="exportOutline()" title="导出Markdown大纲">
+                    导出大纲
+                </button>
+                <button class="btn-compact" onclick="exportHighResImage()" title="导出高清PNG图谱">
+                    导出图谱
+                </button>
+            </div>
+        </div>
+        
+        <div class="wordcloud-container" id="wordcloudContainer"></div>
+        
+        <div class="selected-words" id="selectedWords" style="display: none;">
+            <h3>已选择的词汇</h3>
+            <div class="selected-word-tags" id="selectedWordTags"></div>
+            <p style="margin-top: 12px; font-size: 12px; color: #6c757d;">
+                交互提示：<br>
+                • <strong>单击节点</strong>：选择/取消选择词汇<br>
+                • <strong>双击节点</strong>或<strong>点击+号</strong>：扩展相关词汇<br>
+                • <strong>连线模式</strong>：先点击"连线模式"，然后依次点击两个节点建立关系连线<br>
+                • <strong>单击连线</strong>：选择/取消选择连线<br>
+                • <strong>语义连线</strong>：浅虚线表示AI建议关系，点击+号扩展后变为实线表示确认路径<br>
+                • <strong>图谱操作</strong>：鼠标拖拽平移、滚轮缩放、双击重置视图
+            </p>
+        </div>
+        
+        <div class="debug-panel">
+            <h3>当前核心词节点</h3>
+            <div id="coreNodesList" class="core-nodes-list">
+                等待添加核心词...
+            </div>
+            
+            <h3>调试信息</h3>
+            <div class="debug-info" id="debugInfo">
+                等待生成词云...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局状态
+        let wordCloudData = {
+            nodes: [],
+            links: [], // 用户创建的连线
+            semanticLinks: [], // 语义路径连线
+            selectedNodes: [],
+            selectedLinks: [], // 选中的连线
+            simulation: null,
+            connectionMode: false, // 连线模式开关
+            svgContainer: null, // SVG容器引用
+            nodesGroup: null, // 节点组引用
+            linksGroup: null, // 连线组引用
+            // 🎯 聚光灯效应状态管理
+            focusSystem: {
+                activeExpansionPath: null, // 当前活跃的扩展路径
+                focusedNodeId: null, // 当前聚焦的节点ID
+                lastExpansionTime: 0, // 最后一次扩展时间
+                dimmedNodes: new Set(), // 已淡化的节点集合
+                dimmedLinks: new Set() // 已淡化的链接集合
+            }
+        };
+        
+        // 🎯 智能路径绕避算法：为新节点计算无冲突位置
+        function calculateAvoidancePosition(parentNode, existingNodes, baseAngle, baseRadius) {
+            const parentX = parentNode.x || (window.innerWidth / 2);
+            const parentY = parentNode.y || (window.innerHeight / 2);
+            
+            // 🎯 紧凑搜索：优先保持紧凑，再逐步扩大范围
+            for (let radiusMultiplier = 1; radiusMultiplier <= 2.5; radiusMultiplier++) {
+                const searchRadius = baseRadius * radiusMultiplier;
+                
+                // 🎯 更密集的角度搜索，确保找到最佳位置
+                for (let angleOffset = 0; angleOffset <= Math.PI; angleOffset += Math.PI / 18) {
+                    const angles = angleOffset === 0 ? [baseAngle] : [baseAngle + angleOffset, baseAngle - angleOffset];
+                    
+                    for (const angle of angles) {
+                        const candidateX = parentX + Math.cos(angle) * searchRadius;
+                        const candidateY = parentY + Math.sin(angle) * searchRadius;
+                        
+                        // 检查与现有节点的最小距离
+                        let minDistance = Infinity;
+                        for (const node of existingNodes) {
+                            if (node.id === parentNode.id) continue;
+                            const dx = candidateX - (node.x || 0);
+                            const dy = candidateY - (node.y || 0);
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            minDistance = Math.min(minDistance, distance);
+                        }
+                        
+                        // 🎯 紧密排列检测：允许更近距离，但避免重叠
+                        const nodeRadius = 28; // 稍微减小检测半径
+                        if (minDistance > nodeRadius * 2.0) { // 进一步减小间距，更紧凑
+                            return { x: candidateX, y: candidateY };
+                        }
+                    }
+                }
+            }
+            
+            // 回退方案：随机位置但保持一定距离
+            const fallbackAngle = Math.random() * Math.PI * 2;
+            const fallbackRadius = baseRadius * (2 + Math.random());
+            return {
+                x: parentX + Math.cos(fallbackAngle) * fallbackRadius,
+                y: parentY + Math.sin(fallbackAngle) * fallbackRadius
+            };
+        }
+        
+        // 🔧 动态simulation更新：增量式添加节点，避免重置
+        function updateSimulationWithNewNodes(newNodes) {
+            if (!wordCloudData.simulation) {
+                console.warn('⚠️ Simulation未初始化，将触发完整重新渲染');
+                renderWordCloud();
+                return;
+            }
+            
+            // 💡 D3最佳实践：使用.nodes()更新而不是重新创建
+            wordCloudData.simulation
+                .nodes(wordCloudData.nodes)
+                .alpha(0.3) // 适度重启动能
+                .restart();
+                
+            console.log(`🔧 增量更新simulation：新增${newNodes.length}个节点`);
+        }
+        
+        // 🎨 增量视觉更新：D3 Enter/Update/Exit模式
+        function updateVisualization() {
+            if (!wordCloudData.nodesGroup || !wordCloudData.linksGroup) {
+                console.warn('⚠️ SVG组未初始化，无法增量更新');
+                return;
+            }
+            
+            // 更新连线
+            const links = wordCloudData.linksGroup
+                .selectAll('.semantic-link')
+                .data(wordCloudData.semanticLinks, d => `${d.source.id}-${d.target.id}`);
+                
+            // 新连线进入
+            const linksEnter = links.enter()
+                .append('line')
+                .attr('class', 'semantic-link')
+                .style('stroke', d => d.type === 'solid' ? '#4facfe' : '#a0a0a0')
+                .style('stroke-width', d => d.type === 'solid' ? 2 : 1)
+                .style('stroke-dasharray', d => d.type === 'dashed' ? '8,4' : 'none')
+                .style('opacity', 0);
+                
+            // 连线更新 + 动画
+            links.merge(linksEnter)
+                .transition().duration(300)
+                .style('opacity', d => d.type === 'solid' ? 0.8 : 0.5)
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+                
+            // 移除旧连线
+            links.exit()
+                .transition().duration(200)
+                .style('opacity', 0)
+                .remove();
+            
+            // 更新节点
+            const nodeGroups = wordCloudData.nodesGroup
+                .selectAll('.word-group')
+                .data(wordCloudData.nodes, d => d.id);
+            
+            // 新节点进入
+            const nodeGroupsEnter = nodeGroups.enter()
+                .append('g')
+                .attr('class', 'word-group')
+                .style('opacity', 0);
+            
+            // 添加圆形背景到新节点
+            nodeGroupsEnter.append('circle')
+                .attr('class', d => `word-node ${d.type}`)
+                .attr('r', getNodeRadius)
+                .style('fill', d => d.type === 'fuzzy' ? getDynamicMorandiColor(d) : null)
+                .style('opacity', d => d.type === 'core' ? 1 : Math.max(0.4, 0.4 + d.weight * 0.6));
+            
+            // 添加文字到新节点
+            nodeGroupsEnter.append('text')
+                .attr('class', 'word-text')
+                .each(function(d) {
+                    const radius = getNodeRadius(d);
+                    const textFit = smartTextFit(d.name, radius);
+                    const baseFontSize = Math.min(radius * 0.45, 13);
+                    
+                    d3.select(this)
+                        .style('font-size', `${baseFontSize * textFit.scale}px`)
+                        .text(textFit.text)
+                        .append('title')
+                        .text(d.name);
+                });
+            
+            // 🔡 为新节点添加扩展按钮
+            const expandBtns = nodeGroupsEnter.append('g')
+                .attr('class', 'expand-group')
+                .style('opacity', 0.85);
+                
+            expandBtns.append('circle')
+                .attr('class', 'expand-btn')
+                .attr('r', 7)
+                .attr('cx', d => getNodeRadius(d) * 0.7)
+                .attr('cy', d => -getNodeRadius(d) * 0.7)
+                .on('click', handleExpandClick);
+                
+            expandBtns.append('text')
+                .attr('class', 'expand-icon')
+                .attr('x', d => getNodeRadius(d) * 0.7)
+                .attr('y', d => -getNodeRadius(d) * 0.7)
+                .text('+');
+            
+            // 节点更新 + 动画进入
+            const allNodeGroups = nodeGroups.merge(nodeGroupsEnter);
+            allNodeGroups
+                .transition().duration(500)
+                .style('opacity', 1)
+                .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`);
+                
+            // 移除旧节点
+            nodeGroups.exit()
+                .transition().duration(300)
+                .style('opacity', 0)
+                .remove();
+                
+            // 绑定事件到新节点
+            nodeGroupsEnter
+                .on('click', handleNodeClick)
+                .on('dblclick', handleNodeDoubleClick);
+                
+            console.log('🎨 增量视觉更新完成');
+        }
+        
+        // 🔡 智能连线几何计算 - 参考D3.js和Gephi的最佳实践
+        
+        // 计算圆圈边缘交点 - 确保连线端点对齐
+        function getCircleEdgePoint(center, target, radius) {
+            const dx = target.x - center.x;
+            const dy = target.y - center.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance === 0) return { x: center.x, y: center.y };
+            
+            // 单位向量 * 半径 = 边缘点
+            const ratio = radius / distance;
+            return {
+                x: center.x + dx * ratio,
+                y: center.y + dy * ratio
+            };
+        }
+        
+        // 🌿 自然曲线连线路径 - 节点中心连接，智能避让
+        function calculateNaturalLinkPath(linkData) {
+            const source = linkData.source;
+            const target = linkData.target;
+            
+            if (!source || !target || !source.x || !target.x) {
+                return 'M0,0 L0,0'; // 保护性返回
+            }
+            
+            const dx = target.x - source.x;
+            const dy = target.y - source.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            
+            // 距离很近时使用直线
+            if (distance < 80) {
+                return `M${source.x},${source.y} L${target.x},${target.y}`;
+            }
+            
+            // 中等距离使用轻微弧度
+            if (distance < 200) {
+                const midX = (source.x + target.x) / 2;
+                const midY = (source.y + target.y) / 2;
+                
+                // 计算垂直偏移，创造自然弧度
+                const perpOffset = 15; // 轻微的弧度
+                const perpX = -dy / distance * perpOffset;
+                const perpY = dx / distance * perpOffset;
+                
+                const controlX = midX + perpX;
+                const controlY = midY + perpY;
+                
+                return `M${source.x},${source.y} Q${controlX},${controlY} ${target.x},${target.y}`;
+            }
+            
+            // 较远距离使用光滑S型曲线
+            const cp1X = source.x + dx * 0.25;
+            const cp1Y = source.y + dy * 0.1;
+            const cp2X = target.x - dx * 0.25;
+            const cp2Y = target.y - dy * 0.1;
+            
+            return `M${source.x},${source.y} C${cp1X},${cp1Y} ${cp2X},${cp2Y} ${target.x},${target.y}`;
+        }
+        
+        // 保留原函数名的别名以兼容现有代码
+        function calculateSmartLinkPath(linkData) {
+            return calculateNaturalLinkPath(linkData);
+        }
+        
+        // 🎨 参考图配色系统 - 实现视觉一致性
+        function getDynamicMorandiColor(node) {
+            const pathDepth = node.pathDepth || 1;
+            const gatWeight = node.weight || 0.5;
+            
+            // 🎯 Image #2 风格的浅到深渐变 - 轻盈优雅
+            const grayLevels = [
+                '#E8E8E8', // 层级1: 很浅灰，外围节点
+                '#D0D0D0', // 层级2: 浅灰
+                '#B8B8B8', // 层级3: 中浅灰
+                '#A0A0A0', // 层级4: 中等灰
+                '#888888', // 层级5: 中深灰
+                '#707070'  // 层级6+: 深灰，最内层
+            ];
+            
+            // 🎨 根据路径深度选择灰度级别
+            const levelIndex = Math.min(pathDepth - 1, grayLevels.length - 1);
+            let baseColor = grayLevels[levelIndex];
+            
+            // 🎨 根据权重进行微调，保持视觉层次
+            if (gatWeight < 0.3) {
+                // 低权重节点 - 更浅一级，更突出
+                const lighterIndex = Math.max(0, levelIndex - 1);
+                baseColor = grayLevels[lighterIndex];
+            } else if (gatWeight > 0.7) {
+                // 高权重节点 - 更深一级，更沉稳
+                const darkerIndex = Math.min(grayLevels.length - 1, levelIndex + 1);
+                baseColor = grayLevels[darkerIndex];
+            }
+            
+            return baseColor;
+        }
+
+        // 🎯 聚光灯效应系统 - 智能焦点管理
+        
+        // 设置新的焦点路径：当用户点击节点扩展时调用
+        function setFocusPath(nodeId, expansionPath) {
+            const focusSystem = wordCloudData.focusSystem;
+            
+            // 记录新的活跃状态
+            focusSystem.focusedNodeId = nodeId;
+            focusSystem.activeExpansionPath = expansionPath;
+            focusSystem.lastExpansionTime = Date.now();
+            
+            // 应用聚光灯效应
+            applySpotlightEffect();
+        }
+        
+        // 应用聚光灯效应：淡化非焦点元素
+        function applySpotlightEffect() {
+            const focusSystem = wordCloudData.focusSystem;
+            
+            if (!focusSystem.focusedNodeId || !focusSystem.activeExpansionPath) {
+                return; // 无焦点时不处理
+            }
+            
+            // 获取当前焦点路径上的所有节点ID
+            const focusedNodeIds = new Set();
+            const focusPath = focusSystem.activeExpansionPath;
+            
+            // 添加焦点路径上的所有节点
+            focusPath.forEach(nodeName => {
+                const node = wordCloudData.nodes.find(n => n.name === nodeName);
+                if (node) focusedNodeIds.add(node.id);
+            });
+            
+            // 添加核心节点（永远保持亮度）
+            wordCloudData.nodes.forEach(node => {
+                if (node.type === 'core') {
+                    focusedNodeIds.add(node.id);
+                }
+            });
+            
+            // 应用淡化效果到节点
+            applyNodeDimming(focusedNodeIds);
+            
+            // 应用淡化效果到链接  
+            applyLinkDimming(focusedNodeIds);
+        }
+        
+        // 节点淡化逻辑
+        function applyNodeDimming(focusedNodeIds) {
+            const svg = d3.select('#wordCloudSvg');
+            
+            svg.selectAll('.word-group')
+                .transition()
+                .duration(400)
+                .style('opacity', d => {
+                    if (focusedNodeIds.has(d.id)) {
+                        return d.type === 'core' ? 1 : Math.max(0.4, 0.4 + d.weight * 0.6); // 焦点节点：正常亮度
+                    } else {
+                        return 0.25; // 非焦点节点：淡化到25%
+                    }
+                });
+        }
+        
+        // 链接淡化逻辑
+        function applyLinkDimming(focusedNodeIds) {
+            const svg = d3.select('#wordCloudSvg');
+            
+            svg.selectAll('.semantic-link')
+                .transition()
+                .duration(400)
+                .style('stroke-opacity', d => {
+                    // 检查链接的两端节点是否在焦点路径中
+                    const sourceInFocus = focusedNodeIds.has(d.source.id);
+                    const targetInFocus = focusedNodeIds.has(d.target.id);
+                    
+                    if (sourceInFocus && targetInFocus) {
+                        return d.type === 'solid' ? 0.8 : calculateDashedLinkOpacity(d); // 焦点链接：正常透明度
+                    } else if (sourceInFocus || targetInFocus) {
+                        return 0.3; // 半焦点链接：中等透明度
+                    } else {
+                        return 0.1; // 非焦点链接：极淡
+                    }
+                });
+        }
+        
+        // 清除聚光灯效应：恢复所有元素到正常状态
+        function clearSpotlightEffect() {
+            const focusSystem = wordCloudData.focusSystem;
+            
+            // 清除焦点状态
+            focusSystem.focusedNodeId = null;
+            focusSystem.activeExpansionPath = null;
+            focusSystem.dimmedNodes.clear();
+            focusSystem.dimmedLinks.clear();
+            
+            // 恢复所有节点的正常透明度
+            const svg = d3.select('#wordCloudSvg');
+            
+            svg.selectAll('.word-group')
+                .transition()
+                .duration(600)
+                .style('opacity', d => d.type === 'core' ? 1 : Math.max(0.4, 0.4 + d.weight * 0.6));
+                
+            svg.selectAll('.semantic-link')
+                .transition()
+                .duration(600)
+                .style('stroke-opacity', d => d.type === 'solid' ? 0.8 : calculateDashedLinkOpacity(d));
+        }
+        
+        // Graphiti API 真实语义扩展 - 基于OpenAI智能生成
+        
+        // 🔵 API超时控制：避免无限卡顿
+        function createTimeoutPromise(ms) {
+            return new Promise((_, reject) => 
+                setTimeout(() => reject(new Error(`API请求超时(${ms}ms)`)), ms)
+            );
+        }
+        
+        // 构建对话历史 - 让AI感知完整的概念演进过程
+        function buildConversationHistory(semanticPath, currentWord, limit) {
+            const messages = [];
+            
+            if (semanticPath.length === 1) {
+                // 第一级：元概念扩展
+                messages.push({
+                    role: 'user',
+                    content: `请为概念"${currentWord}"生成${limit}个相关的概念词汇。
+
+要求：
+1. 多维度关联：从不同角度找到与"${currentWord}"相关的概念
+2. 真实性原则：只使用日常语言中真实存在的概念词汇，禁止刻意组合创造词汇
+3. 词汇规格：2-3字中文词汇，如"音乐"、"艺术"、"情感"等自然概念
+4. 避免复合创造：不要生成"音刃对峙"、"撕裂节拍"这类刻意组合的词汇
+5. 按语义关联强度排序
+
+直接返回${limit}个真实存在的概念词汇，逗号分隔。`
+                });
+            } else {
+                // 多级：基于语义路径的上下文扩展
+                // 添加历史扩展记录
+                for (let i = 0; i < semanticPath.length - 1; i++) {
+                    const fromConcept = semanticPath[i];
+                    const toConcept = semanticPath[i + 1];
+                    
+                    messages.push({
+                        role: 'user', 
+                        content: `基于"${fromConcept}"扩展相关概念`
+                    });
+                    
+                    // 使用真实的AI历史回应（从实际API获取）
+                    // 注意：这里应该从真实的conversation history获取，而不是模拟数据
+                }
+                
+                // 当前扩展请求
+                messages.push({
+                    role: 'user',
+                    content: `基于完整语义路径"${semanticPath.join(' → ')}"进行多重语义融合扩展。
+
+多重语义权重分析：
+${semanticPath.map((word, index) => {
+    if (index === semanticPath.length - 1) {
+        return `- "${word}" (当前焦点，权重40%) - 主要扩展方向`;
+    } else {
+        const weight = Math.round(60 / (semanticPath.length - 1));
+        return `- "${word}" (路径影响，权重${weight}%) - 语义特征影响`;
+    }
+}).join('\n')}
+
+融合扩展原则：
+1. 多重语义融合：不是单纯的"${currentWord}"扩展，而是"${semanticPath.join('+')}复合语义空间"中的概念
+2. 真实性与深度平衡：使用真实存在的概念，但允许专业术语和文学概念，如"病态美学"、"先锋艺术"等
+3. 禁止人工组合：避免"音刃撕裂"、"流行音刃"这类生硬组合词
+4. 语义特征继承：每个概念都应体现整条路径的复合特征
+
+预期效果示例：
+- 如果路径是"椎名林檎→音乐→流行"，应生成带有"椎名林檎特色+音乐属性"的流行概念
+- 而不是通用的流行概念
+
+返回${limit}个体现多重语义融合的概念词汇，2-3字为主，逗号分隔。`
+                });
+            }
+            
+            return messages;
+        }
+        
+        // Graphiti API真实语义扩展 - 基于OpenAI智能生成
+        async function getConceptNetConcepts(nodeOrWord, limit = 8) {
+            const coreWord = typeof nodeOrWord === 'string' ? nodeOrWord : nodeOrWord.name;
+            
+            // 构建完整语义路径
+            let semanticPath = [];
+            if (typeof nodeOrWord === 'object' && nodeOrWord.semanticPath) {
+                console.log('🐛 DEBUG: nodeOrWord.semanticPath =', nodeOrWord.semanticPath);
+                
+                semanticPath = nodeOrWord.semanticPath.map(pathNode => {
+                    // 确保每个路径节点正确处理 - 使用后端期望的格式
+                    if (typeof pathNode === 'string') {
+                        return {concept: pathNode, weight: 1.0};
+                    } else {
+                        return {concept: pathNode.name || pathNode, weight: pathNode.weight || 1.0};
+                    }
+                });
+                
+                console.log('🐛 DEBUG: 构建的semanticPath =', semanticPath);
+            }
+            
+            console.log(`🧠 GAT路径权重扩展: ${coreWord}, 路径长度: ${semanticPath.length}, 限制: ${limit}`);
+            
+            try {
+                
+                const response = await fetch('/api/path-expand', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        current_concept: coreWord,
+                        semantic_path: semanticPath,
+                        target_count: limit
+                    })
+                });
+                
+                if (!response.ok) {
+                    console.error(`Graphiti API调用失败: ${response.status}`);
+                    return [];
+                }
+                
+                const data = await response.json();
+                
+                if (!data.success) {
+                    console.warn('Graphiti API返回失败:', data.error);
+                    return [];
+                }
+                
+                console.log(`🎨 Graphiti原始回复:`, data.data);
+                
+                // 解析GAT API返回的语义结构
+                const concepts = [];
+                
+                // 处理GAT生成的概念
+                if (data.data.concepts) {
+                    data.data.concepts.forEach((item, index) => {
+                        concepts.push({
+                            word: item.name,
+                            weight: item.weight,  // 使用GAT计算的真实权重
+                            relation: 'gat_semantic',
+                            source: 'gat_path_api',
+                            originalPrompt: coreWord,
+                            pathWeight: item.total_path_weight,
+                            attentionFactor: item.path_attention,
+                            fullPath: item.full_semantic_path
+                        });
+                    });
+                }
+                
+                console.log(`✅ GAT成功生成 ${concepts.length} 个真实概念`);
+                console.log('🔍 生成概念:', concepts.map(c => `${c.word}(${c.weight.toFixed(2)})`).join(', '));
+                
+                return concepts.slice(0, limit);
+                
+            } catch (error) {
+                console.error('Graphiti API调用异常:', error);
+                return [];
+            }
+        }
+        
+        // 完全删除死数据后备机制 - 严格遵循只用API原则
+        
+        // 生成词云数据 - 保持原版串行调用逻辑
+        async function generateWordCloud() {
+            const coreWordsInput = document.getElementById('coreWords').value.trim();
+            const nodeCount = parseInt(document.getElementById('nodeCount').value);
+            
+            if (!coreWordsInput) {
+                alert('请输入核心词汇');
+                return;
+            }
+            
+            const coreWords = coreWordsInput.split(',').map(w => w.trim()).filter(w => w);
+            
+            // 清空现有数据
+            wordCloudData.nodes = [];
+            wordCloudData.selectedNodes = [];
+            
+            updateDebugInfo('🔄 开始生成词云数据...');
+            
+            try {
+                // 添加核心词 - 分散初始位置避免堆叠
+                const container = document.getElementById('wordcloudContainer');
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                
+                coreWords.forEach((word, index) => {
+                    let x, y;
+                    
+                    if (coreWords.length === 1) {
+                        // 🎯 单个核心词：居中显示
+                        x = width/2;
+                        y = height/2;
+                    } else {
+                        // 🎯 多个核心词：优化螺旋布局，确保合理间距
+                        const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // 137.5°黄金角
+                        const angle = index * goldenAngle;
+                        // 🔧 修复：确保最小间距，避免重叠
+                        const radius = Math.max(80, Math.sqrt(index + 1) * 60); // 最小80px间距
+                        x = width/2 + radius * Math.cos(angle);
+                        y = height/2 + radius * Math.sin(angle);
+                    }
+                    
+                    wordCloudData.nodes.push({
+                        id: word,
+                        name: word,
+                        type: 'core',
+                        weight: 1.0,
+                        source: 'user_input',
+                        semanticPath: [word],
+                        pathDepth: 1,
+                        x: x, // 设置初始位置
+                        y: y
+                    });
+                });
+                
+                // 使用Graphiti真实扩展每个核心词，保持父子关系 - 保持原版串行调用
+                let allInitialConcepts = [];
+                for (const coreWord of coreWords.slice(0, 3)) { // 限制核心词数量避免API过载
+                    // 为核心词创建临时节点对象，包含语义路径信息
+                    const coreNode = {
+                        name: coreWord,
+                        semanticPath: [coreWord],
+                        type: 'core'
+                    };
+                    const concepts = await getConceptNetConcepts(coreNode, 6);
+                    
+                    // 为每个概念标记它来自哪个核心词
+                    concepts.forEach(concept => {
+                        concept.parentCoreWord = coreWord;
+                        concept.semanticPath = [coreWord, concept.word];
+                    });
+                    
+                    allInitialConcepts.push(...concepts);
+                }
+                
+                // 按权重排序并限制数量
+                allInitialConcepts.sort((a, b) => b.weight - a.weight);
+                const selectedConcepts = allInitialConcepts.slice(0, nodeCount - coreWords.length);
+                
+                // 添加模糊概念词，使用环形分布避免重叠
+                selectedConcepts.forEach((concept, index) => {
+                    const uniqueId = `${concept.word}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                    
+                    // 环形分布 - 确保节点不会堆叠在中心
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    const ringRadius = 80 + (index % 3) * 40; // 3个环层：80, 120, 160
+                    const angle = (index * 137.5) * Math.PI / 180; // 黄金角分布
+                    const initialX = centerX + ringRadius * Math.cos(angle);
+                    const initialY = centerY + ringRadius * Math.sin(angle);
+                    
+                    const newNode = {
+                        id: uniqueId,
+                        name: concept.word,
+                        type: 'fuzzy',
+                        weight: concept.weight,
+                        source: concept.source,
+                        relation: concept.relation,
+                        parentNode: concept.parentCoreWord,
+                        semanticPath: concept.semanticPath,
+                        pathDepth: concept.semanticPath.length,
+                        x: initialX, // 🔥 设置初始X位置
+                        y: initialY  // 🔥 设置初始Y位置
+                    };
+                    
+                    wordCloudData.nodes.push(newNode);
+                    
+                    // 为初始扩展创建浅虚线 - 表示AI建议，未确认
+                    const parentNode = wordCloudData.nodes.find(n => n.name === concept.parentCoreWord);
+                    if (parentNode) {
+                        createSemanticLink(parentNode, newNode, 'dashed');
+                    }
+                });
+                
+                // 显示初始连接关系
+                const connectionInfo = selectedConcepts.map(concept => 
+                    `${concept.word}[${concept.semanticPath.join('→')}]`
+                ).join(', ');
+                
+                updateDebugInfo(`✅ 初始词云生成完成！核心词: ${coreWords.length}个, 模糊词: ${selectedConcepts.length}个\n连接关系: ${connectionInfo}`);
+                
+                // 渲染词云
+                renderWordCloud();
+                updateCoreNodesList();
+                
+            } catch (error) {
+                console.error('词云生成失败:', error);
+                updateDebugInfo(`❌ 词云生成失败: ${error.message}`);
+            }
+        }
+        
+        // 渲染词云 - 优化版本避免抖动
+        function renderWordCloud() {
+            const container = document.getElementById('wordcloudContainer');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            // 清空容器
+            d3.select(container).selectAll('*').remove();
+            
+            // 创建SVG with 图谱交互功能
+            // 🚀 创建无限大的SVG画布，彻底消除边界
+            const svg = d3.select(container)
+                .append('svg')
+                .style('width', '100vw') // ✨ 使用视窗全宽
+                .style('height', '100vh') // ✨ 使用视窗全高
+                .style('overflow', 'visible') // ✨ 允许元素超出边界
+                .attr('viewBox', `${-width*2} ${-height*2} ${width*4} ${height*4}`); // ✨ 4倍大的视图区域
+                
+            const g = svg.append('g');
+            
+            // 添加连线组和节点组
+            const linksGroup = g.append('g').attr('class', 'links-group');
+            const nodesGroup = g.append('g').attr('class', 'nodes-group');
+            
+            // 添加缩放和平移功能
+            const zoom = d3.zoom()
+                .scaleExtent([0.3, 3]) // 缩放范围：30%到300%
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+            
+            svg.call(zoom);
+            
+            // 双击重置视图
+            svg.on('dblclick.zoom', null); // 禁用默认双击缩放
+            svg.on('dblclick', () => {
+                svg.transition()
+                    .duration(750)
+                    .call(zoom.transform, d3.zoomIdentity);
+                updateDebugInfo('🔄 视图已重置到初始位置和缩放级别');
+            });
+            
+            // 🎯 单击空白区域清除聚光灯效应
+            svg.on('click', (event) => {
+                // 确保点击的是SVG背景，不是节点或链接
+                if (event.target === svg.node() || event.target.tagName === 'svg') {
+                    clearSpotlightEffect();
+                    console.log('🎯 聚光灯效应已清除');
+                    updateDebugInfo('🎯 已清除聚光灯效应，恢复所有元素正常显示');
+                }
+            });
+            
+            // 🌿 有机圆形力模拟 - 自然分布不受矩形约束
+            const centerX = width / 2;
+            const centerY = height / 2;
+            // 🚀 彻底消除边界：无限大的可用空间
+            const maxRadius = Infinity; // ✨ 无限大的边界
+            
+            const simulation = d3.forceSimulation(wordCloudData.nodes)
+                .force('charge', d3.forceManyBody()
+                    .strength(-150) // 🎯 减少排斥力，让节点更紧凑
+                )
+                .force('center', d3.forceCenter(centerX, centerY)) // 轻柔居中，避免整体漂散
+                .force('collision', d3.forceCollide()
+                    .radius(d => getNodeRadius(d) + 15) // 🎯 增加碰撞半径，确保文字不重叠
+                    .strength(0.9) // 🎯 增强碰撞力度，强制分离
+                )
+                // 🚀 彻底移除所有边界约束，节点可以无限扩展
+                // .force('boundary', ...) ✨ 不再需要任何边界限制
+                .alphaDecay(0.03);
+            
+            wordCloudData.simulation = simulation;
+            
+            // 🎨 渐变定义 - 连线视觉层次
+            const defs = svg.select('defs').empty() ? svg.append('defs') : svg.select('defs');
+            
+            // 清除旧的渐变
+            defs.selectAll('.link-gradient').remove();
+            
+            // 🎨 为每条连线创建参考图风格的渐变配色
+            wordCloudData.links.forEach((link, index) => {
+                const gradientId = `linkGradient${index}`;
+                // 🎨 蓝色中心 -> 灰色目标的渐变，与参考图完全一致
+                const sourceColor = '#007AFF';  // 🎨 蓝色中心节点
+                const targetColor = getDynamicMorandiColor({pathDepth: 2, weight: link.weight});
+                
+                const gradient = defs.append('linearGradient')
+                    .attr('class', 'link-gradient')
+                    .attr('id', gradientId)
+                    .attr('gradientUnits', 'userSpaceOnUse');
+                    
+                gradient.append('stop')
+                    .attr('offset', '0%')
+                    .attr('stop-color', sourceColor)
+                    .attr('stop-opacity', 0.8); // 🎨 提高起始透明度
+                    
+                gradient.append('stop')
+                    .attr('offset', '50%')
+                    .attr('stop-color', '#C0C0C0') // 🎨 中间过渡色 - 中等灰色
+                    .attr('stop-opacity', 0.5);
+                    
+                gradient.append('stop')
+                    .attr('offset', '100%')
+                    .attr('stop-color', targetColor)
+                    .attr('stop-opacity', 0.7); // 🎨 提高结束透明度
+            });
+            
+            // 渲染用户创建的连线 - 参考图配色方案
+            const links = linksGroup.selectAll('.word-link')
+                .data(wordCloudData.links)
+                .enter().append('line')
+                .attr('class', 'word-link')
+                .style('stroke', '#007AFF') // 🎨 用户连线 - 蓝色实线，与中心节点一致
+                .style('stroke-width', d => Math.max(2, d.weight * 3))
+                .style('stroke-opacity', 0.8)
+                .style('filter', 'drop-shadow(0 1px 3px rgba(0,122,255,0.3))') // 🎨 添加蓝色阴影
+                .on('click', handleLinkClick);
+            
+            // ✅ 重新启用语义连线渲染，修复Safari渲染bug
+            const semanticLinks = linksGroup.selectAll('.semantic-link')
+                .data(wordCloudData.semanticLinks)
+                .enter().append('path')
+                .attr('class', d => `semantic-link ${d.type}`)
+                .attr('fill', 'none') // ✨ 关键修复：禁用fill避免黑影
+                .attr('fill-rule', 'nonzero') // ✨ Safari修复：使用nonzero规则
+                .style('shape-rendering', 'geometricPrecision'); // ✨ 提高渲染精度
+            
+            // 创建节点组
+            const nodeGroups = nodesGroup.selectAll('.word-group')
+                .data(wordCloudData.nodes)
+                .enter().append('g')
+                .attr('class', 'word-group')
+                .style('opacity', 0);
+            
+            // 🖱️ 优雅拖拽功能 - 智能识别拖拽意图
+            let dragStartTime = 0;
+            let isDragging = false;
+            let longPressTimer = null;
+            
+            const dragBehavior = d3.drag()
+                .on('start', function(event, d) {
+                    dragStartTime = Date.now();
+                    isDragging = false;
+                    
+                    // 长按检测 - 200ms后激活拖拽（更快响应）
+                    longPressTimer = setTimeout(() => {
+                        isDragging = true;
+                        d3.select(this).classed('dragging', true);
+                        updateDebugInfo(`🖱️ 开始拖拽节点: ${d.name}`);
+                        
+                        // 固定节点位置，禁用力模拟对此节点的影响
+                        d.fx = d.x;
+                        d.fy = d.y;
+                        
+                        // 重启模拟以更新约束
+                        if (wordCloudData.simulation) {
+                            wordCloudData.simulation.alpha(0.3).restart();
+                        }
+                    }, 200);
+                })
+                .on('drag', function(event, d) {
+                    if (isDragging) {
+                        // 更新固定位置
+                        d.fx = event.x;
+                        d.fy = event.y;
+                        
+                        // 🔥 实时更新节点位置和相关连线（移除矩形夹逼）
+                        d.x = d.fx;
+                        d.y = d.fy;
+                        
+                        // 更新节点组位置
+                        d3.select(this).attr('transform', `translate(${d.x}, ${d.y})`);
+                    }
+                })
+                .on('end', function(event, d) {
+                    // 清除长按计时器
+                    if (longPressTimer) {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    }
+                    
+                    // 检测是否为快速点击（非拖拽）
+                    const clickDuration = Date.now() - dragStartTime;
+                    
+                    if (!isDragging && clickDuration < 200) {
+                        // 快速点击 - 触发节点扩展
+                        if (d.type !== 'core') {
+                            expandNode(d);
+                        }
+                    }
+                    
+                    if (isDragging) {
+                        d3.select(this).classed('dragging', false);
+                        updateDebugInfo(`✅ 拖拽完成: ${d.name}`);
+                        
+                        // 释放固定约束，恢复力模拟
+                        d.fx = null;
+                        d.fy = null;
+                        
+                        if (wordCloudData.simulation) {
+                            wordCloudData.simulation.alphaTarget(0);
+                        }
+                    }
+                    
+                    isDragging = false;
+                });
+            
+            // 绑定拖拽行为到节点组
+            nodeGroups.call(dragBehavior);
+            
+            // 添加圆形背景
+            nodeGroups.append('circle')
+                .attr('class', d => `word-node ${d.type}`)
+                .attr('r', getNodeRadius)
+                .style('fill', d => d.type === 'fuzzy' ? getDynamicMorandiColor(d) : null) // 🎯 关键修复：添加fill属性
+                .style('opacity', d => d.type === 'core' ? 1 : Math.max(0.4, 0.4 + d.weight * 0.6))
+                .on('click', handleNodeClick)
+                .on('dblclick', handleNodeDoubleClick);
+            
+            // 添加文字 - 智能适应版
+            nodeGroups.append('text')
+                .attr('class', 'word-text')
+                .each(function(d) {
+                    const radius = getNodeRadius(d);
+                    const textFit = smartTextFit(d.name, radius);
+                    const baseFontSize = Math.min(radius * 0.45, 13);
+                    
+                    d3.select(this)
+                        .style('font-size', `${baseFontSize * textFit.scale}px`)
+                        .text(textFit.text)
+                        .append('title') // 悬停显示完整文本
+                        .text(d.name);
+                });
+            
+            // 添加扩展按钮 - 优雅集成版
+            const expandBtns = nodeGroups.append('g')
+                .attr('class', 'expand-group')
+                .style('opacity', 0.85);
+                
+            expandBtns.append('circle')
+                .attr('class', 'expand-btn')
+                .attr('r', 7)
+                .attr('cx', d => getNodeRadius(d) * 0.7)
+                .attr('cy', d => -getNodeRadius(d) * 0.7)
+                .on('click', handleExpandClick);
+                
+            expandBtns.append('text')
+                .attr('class', 'expand-icon')
+                .attr('x', d => getNodeRadius(d) * 0.7)
+                .attr('y', d => -getNodeRadius(d) * 0.7)
+                .text('+');
+            
+            // 入场动画
+            nodeGroups.transition()
+                .delay((d, i) => i * 50)
+                .duration(800)
+                .style('opacity', 1);
+            
+            // 力模拟更新 - 添加边界约束
+            simulation.on('tick', () => {
+                // 去除矩形边界夹逼，改由碰撞力与轻柔居中力维持形态
+                
+                // 更新用户连线位置
+                links
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+                
+                // ✨ Safari弧形路径渲染bug修复：使用贝塞尔曲线替代弧形
+                semanticLinks
+                    .attr('d', (d, i) => {
+                        const dx = d.target.x - d.source.x;
+                        const dy = d.target.y - d.source.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        // 距离太近时直接使用直线，避免渲染问题
+                        if (distance < 60) {
+                            return `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`;
+                        }
+                        
+                        // ✨ 使用贝塞尔曲线替代SVG弧形，避免Safari渲染bug
+                        const midX = (d.source.x + d.target.x) / 2;
+                        const midY = (d.source.y + d.target.y) / 2;
+                        
+                        // 计算控制点的偏移，交替方向避免重叠
+                        const offset = 25 * (i % 2 === 0 ? 1 : -1);
+                        const perpX = -dy / distance * offset;
+                        const perpY = dx / distance * offset;
+                        
+                        const controlX = midX + perpX;
+                        const controlY = midY + perpY;
+                        
+                        // 使用二次贝塞尔曲线，单一路径避免重叠
+                        return `M${d.source.x},${d.source.y}Q${controlX},${controlY} ${d.target.x},${d.target.y}`;
+                    });
+                    
+                // 更新节点位置
+                nodeGroups.attr('transform', d => `translate(${d.x}, ${d.y})`);
+            });
+            
+            // 监听模拟结束，确保完全停止
+            simulation.on('end', () => {
+                updateDebugInfo('🎯 布局已稳定，节点已停止移动，可以开始点击交互');
+                console.log('🎯 力导向布局已完全停止');
+            });
+            
+            // 2秒后强制停止，确保用户可以快速交互
+            setTimeout(() => {
+                simulation.stop();
+                updateDebugInfo('⏰ 强制停止布局动画，节点现已完全固定');
+            }, 2000);
+            
+            updateStats();
+            updateDebugInfo('🎨 词云渲染完成！可以开始交互测试');
+        }
+        
+        // 智能文本适应算法 - 基于业界最佳实践
+        function smartTextFit(text, radius) {
+            // 中文字符宽度约等于字体大小
+            const baseTextWidth = text.length * 0.8; // 中文字符宽度系数
+            const availableWidth = radius * 1.6; // 圆形可用宽度（直径的80%）
+            
+            // 优先策略：保持文本完整，调整字体大小
+            if (baseTextWidth <= availableWidth) {
+                return { text: text, scale: 1.0 };
+            }
+            
+            // 策略1：缩小字体适应
+            const scaleNeeded = availableWidth / baseTextWidth;
+            if (scaleNeeded >= 0.7 && text.length <= 6) {
+                return { text: text, scale: scaleNeeded };
+            }
+            
+            // 策略2：智能截断保留核心语义
+            if (text.length <= 4) {
+                return { text: text, scale: 0.9 };
+            } else if (text.length <= 6) {
+                return { text: text.substring(0, 4) + '..', scale: 0.85 };
+            } else {
+                // 长文本：保留关键词汇
+                const core = text.substring(0, 3) + '..';
+                return { text: core, scale: 0.8 };
+            }
+        }
+        
+        // 获取节点半径
+        function getNodeRadius(d) {
+            const baseRadius = 16;
+            const maxRadius = 36;
+            return d.type === 'core' ? maxRadius : baseRadius + d.weight * (maxRadius - baseRadius);
+        }
+        
+        // 节点点击事件 - 增强调试 + 连线功能
+        function handleNodeClick(event, d) {
+            event.stopPropagation();
+            
+            if (wordCloudData.connectionMode) {
+                // 连线模式处理
+                handleConnectionClick(d);
+                return;
+            }
+            
+            // 普通选择模式
+            console.log('🔍 点击节点详情:', d);
+            console.log('🔍 当前选中节点:', wordCloudData.selectedNodes);
+            
+            toggleNodeSelection(d.id);
+            updateNodeStyles();
+            updateStats();
+            updateSelectedWords();
+            
+            const isSelected = wordCloudData.selectedNodes.includes(d.id);
+            updateDebugInfo(`🎯 ${isSelected ? '✅ 成功选中' : '❌ 取消选中'}: ${d.name} (类型: ${d.type}, 权重: ${d.weight.toFixed(2)})`);
+        }
+        
+        // 连线模式点击处理
+        let firstConnectionNode = null;
+        function handleConnectionClick(node) {
+            if (!firstConnectionNode) {
+                // 第一次点击，选择起始节点
+                firstConnectionNode = node;
+                d3.selectAll('.word-node').classed('node-connecting', false);
+                d3.select(event.target).classed('node-connecting', true);
+                updateDebugInfo(`🔗 已选择起始节点: ${node.name}，请点击目标节点建立连线`);
+            } else if (firstConnectionNode.id === node.id) {
+                // 点击同一节点，取消选择
+                firstConnectionNode = null;
+                d3.selectAll('.word-node').classed('node-connecting', false);
+                updateDebugInfo(`🔗 已取消连线选择`);
+            } else {
+                // 第二次点击，创建连线
+                createConnection(firstConnectionNode, node);
+                firstConnectionNode = null;
+                d3.selectAll('.word-node').classed('node-connecting', false);
+            }
+        }
+        
+        // 创建连线
+        function createConnection(sourceNode, targetNode) {
+            const linkId = `${sourceNode.id}-${targetNode.id}`;
+            const existingLink = wordCloudData.links.find(l => 
+                (l.source.id === sourceNode.id && l.target.id === targetNode.id) ||
+                (l.source.id === targetNode.id && l.target.id === sourceNode.id)
+            );
+            
+            if (existingLink) {
+                updateDebugInfo(`⚠️ ${sourceNode.name} 和 ${targetNode.name} 之间已存在连线`);
+                return;
+            }
+            
+            wordCloudData.links.push({
+                id: linkId,
+                source: sourceNode,
+                target: targetNode,
+                relation: 'user_defined'
+            });
+            
+            updateDebugInfo(`✅ 成功创建连线: ${sourceNode.name} ↔ ${targetNode.name}`);
+            renderWordCloud(); // 重新渲染以显示新连线
+        }
+        
+        // 连线点击事件
+        function handleLinkClick(event, d) {
+            event.stopPropagation();
+            
+            const linkIndex = wordCloudData.selectedLinks.indexOf(d.id);
+            if (linkIndex > -1) {
+                wordCloudData.selectedLinks.splice(linkIndex, 1);
+                updateDebugInfo(`❌ 取消选中连线: ${d.source.name} ↔ ${d.target.name}`);
+            } else {
+                wordCloudData.selectedLinks.push(d.id);
+                updateDebugInfo(`✅ 选中连线: ${d.source.name} ↔ ${d.target.name}`);
+            }
+            
+            updateLinkStyles();
+        }
+        
+        // 切换连线模式
+        function toggleConnectionMode() {
+            wordCloudData.connectionMode = !wordCloudData.connectionMode;
+            firstConnectionNode = null;
+            
+            const btn = document.getElementById('connectionBtn');
+            if (wordCloudData.connectionMode) {
+                btn.classList.add('connection-mode');
+                btn.textContent = '🚫 退出连线';
+                updateDebugInfo('🔗 已进入连线模式，点击两个节点建立连线');
+            } else {
+                btn.classList.remove('connection-mode');
+                btn.textContent = '🔗 连线模式';
+                d3.selectAll('.word-node').classed('node-connecting', false);
+                updateDebugInfo('📍 已退出连线模式，恢复普通选择模式');
+            }
+        }
+        
+        // 节点双击事件 - 扩展
+        function handleNodeDoubleClick(event, d) {
+            event.stopPropagation();
+            expandNode(d);
+        }
+        
+        // 扩展按钮点击
+        function handleExpandClick(event, d) {
+            event.stopPropagation();
+            expandNode(d);
+        }
+        
+        // 扩展节点 - 增强调试版
+        async function expandNode(node) {
+            updateDebugInfo(`🔄 开始扩展节点: ${node.name} (类型: ${node.type})...`);
+            console.log('🔄 扩展节点详情:', node);
+            
+            // 🎯 步骤1：确认当前节点的入链路径（虚线→实线）
+            confirmIncomingPath(node);
+            
+            try {
+                updateDebugInfo(`🤖 正在调用Graphiti API路径扩展: ${node.name} (路径: ${(node.semanticPath || [node.name]).join('→')})`);
+                const concepts = await getConceptNetConcepts(node, 6); // 传递完整节点对象
+                
+                console.log(`📊 Graphiti返回真实概念数量: ${concepts.length}`, concepts);
+                updateDebugInfo(`📊 Graphiti真实生成 ${concepts.length} 个概念`);
+                
+                if (concepts.length === 0) {
+                    updateDebugInfo(`❌ Graphiti API没有为此词汇生成概念: ${node.name}`);
+                    return;
+                }
+                
+                const existingNames = wordCloudData.nodes.map(n => n.name);
+                console.log('🔍 现有节点名称:', existingNames);
+                
+                // 严格去重逻辑：完全禁止任何重复
+                const newConcepts = [];
+                const globalExistingWords = new Set(existingNames); // 全局已存在的词汇
+                
+                console.log('📝 当前全局已存在词汇:', Array.from(globalExistingWords));
+                
+                // 严格筛选：只添加完全没有出现过的概念
+                let addedCount = 0;
+                for (const concept of concepts.slice(0, 20)) { // 扩大搜索范围到20个候选
+                    if (!globalExistingWords.has(concept.word)) {
+                        newConcepts.push(concept);
+                        globalExistingWords.add(concept.word); // 立即加入已存在集合
+                        addedCount++;
+                        
+                        console.log(`✅ 添加新概念 ${addedCount}: ${concept.word} (权重: ${concept.weight.toFixed(2)})`);
+                        
+                        if (addedCount >= 6) break; // 最多6个新概念
+                    } else {
+                        console.log(`🚫 跳过重复词汇: ${concept.word}`);
+                    }
+                }
+                
+                console.log('🆕 智能筛选后的新概念:', newConcepts);
+                updateDebugInfo(`🆕 严格去重筛选得到 ${newConcepts.length} 个全新概念`);
+                
+                if (newConcepts.length === 0) {
+                    updateDebugInfo(`⚠️ 没有找到新的概念词汇给: ${node.name} (严格去重，杜绝重复)`);
+                    return;
+                }
+                
+                // 添加新节点，位置靠近父节点，使用智能防重叠算法
+                newConcepts.forEach((concept, index) => {
+                    // 🎯 优化角度分布：避免重叠，确保均匀分布
+                    const angle = (index / newConcepts.length) * 2 * Math.PI + Math.random() * 0.3;
+                    
+                    // 🎯 更紧凑距离：保持视觉舒适但减少散布
+                    const baseRadius = Math.max(65, 45 + newConcepts.length * 10); // 进一步紧凑的基础距离
+                    const radius = baseRadius + Math.random() * 15; // 65-80px 范围，更紧密
+                    
+                    // 生成唯一ID：词汇名_时间戳_随机数
+                    const uniqueId = `${concept.word}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                    
+                    // 使用GAT API返回的完整语义路径
+                    let currentPath;
+                    if (concept.fullPath && concept.fullPath.length > 0) {
+                        // 使用GAT计算的完整路径，增加安全检查
+                        currentPath = concept.fullPath
+                            .filter(p => p && (p.concept || p.name)) // ✨ 过滤空值
+                            .map(p => p.concept || p.name || '');
+                    } else {
+                        // 回退方案：构建路径
+                        const parentPath = node.semanticPath || [node.name];
+                        currentPath = [...parentPath, concept.word];
+                    }
+                    
+                    // 验证路径完整性：确保第一个节点是核心词
+                    const rootNode = currentPath[0];
+                    const isValidPath = wordCloudData.nodes.some(n => n.type === 'core' && n.name === rootNode);
+                    
+                    if (!isValidPath) {
+                        console.warn(`⚠️ 路径验证失败: ${currentPath.join('→')} 的根节点"${rootNode}"不是核心词`);
+                    }
+                    
+                    // 🎯 使用智能避碰算法计算无冲突位置
+                    const avoidancePosition = calculateAvoidancePosition(
+                        node, 
+                        wordCloudData.nodes, 
+                        angle, 
+                        radius
+                    );
+                    
+                    const newNode = {
+                        id: uniqueId,
+                        name: concept.word,
+                        type: 'fuzzy',
+                        weight: concept.weight,
+                        source: 'expansion',
+                        parentNode: node.id,
+                        semanticPath: currentPath, // 完整语义路径
+                        pathDepth: currentPath.length, // 路径深度
+                        x: avoidancePosition.x,
+                        y: avoidancePosition.y
+                    };
+                    
+                    wordCloudData.nodes.push(newNode);
+                    
+                    // 用户主动扩展 - 创建虚线（新AI建议）
+                    createSemanticLink(node, newNode, 'dashed');
+                });
+                
+                // 显示每个新节点的完整路径
+                const pathInfo = newConcepts.map(c => {
+                    const fullPath = [...(node.semanticPath || [node.name]), c.word];
+                    return `${c.word}[${fullPath.join('→')}]`;
+                }).join(', ');
+                
+                updateDebugInfo(`✅ 路径扩展完成！从 ${(node.semanticPath || [node.name]).join('→')} 扩展了 ${newConcepts.length} 个概念:\n${pathInfo}`);
+                
+                // 重新渲染
+                renderWordCloud();
+                updateCoreNodesList();
+                
+                // 🌊 触发层级淡化机制 - 让早期虚线变浅
+                setTimeout(() => {
+                    updateSemanticLinkStyles();
+                    updateAllDashedLinksOnExpansion(); // 🎯 关键：触发层级淡化
+                    
+                    // 🎯 激活聚光灯效应：聚焦当前扩展路径
+                    const expansionPath = node.semanticPath || [node.name];
+                    setFocusPath(node.id, expansionPath);
+                    console.log('🎯 聚光灯效应已激活:', {nodeId: node.id, path: expansionPath});
+                }, 100);
+                
+            } catch (error) {
+                console.error('扩展节点失败:', error);
+                updateDebugInfo(`❌ 扩展节点失败: ${error.message}`);
+            }
+        }
+        
+        // 确认节点的入链路径（虚线→实线）
+        function confirmIncomingPath(node) {
+            let confirmedCount = 0;
+            
+            wordCloudData.semanticLinks.forEach(link => {
+                // 检查是否是连到当前节点的虚线
+                if ((link.target.id === node.id || link.target.name === node.name) && 
+                    link.type === 'dashed') {
+                    link.type = 'solid';
+                    confirmedCount++;
+                    console.log(`✅ 路径确认: ${link.source.name} → ${link.target.name} (虚线→实线)`);
+                    updateDebugInfo(`✅ 确认路径: ${link.source.name} → ${link.target.name}`);
+                }
+            });
+            
+            if (confirmedCount > 0) {
+                // 重新渲染连线以显示变化
+                updateSemanticLinks();
+                updateDebugInfo(`🔗 已确认 ${confirmedCount} 条入链路径`);
+            } else {
+                updateDebugInfo(`ℹ️ 节点 ${node.name} 没有需要确认的入链路径`);
+            }
+        }
+        
+        // 添加新的核心词节点
+        function addNewCoreWord() {
+            const newWordInput = document.getElementById('newCoreWord');
+            const newWord = newWordInput.value.trim();
+            
+            if (!newWord) {
+                alert('请输入新的核心词');
+                return;
+            }
+            
+            // 检查是否已存在
+            const existing = wordCloudData.nodes.find(n => n.name === newWord);
+            if (existing) {
+                alert(`"${newWord}"已存在于词云中`);
+                return;
+            }
+            
+            // 添加新的核心节点
+            const container = document.getElementById('wordcloudContainer');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            // 避开现有节点的智能定位
+            const centerX = width / 2;
+            const centerY = height / 2;
+            let x, y;
+            
+            // 尝试找到不重叠的位置
+            for (let attempt = 0; attempt < 50; attempt++) {
+                const radius = 60 + attempt * 20;
+                const angle = Math.random() * Math.PI * 2;
+                x = centerX + radius * Math.cos(angle);
+                y = centerY + radius * Math.sin(angle);
+                
+                // 检查与现有节点的距离
+                let validPosition = true;
+                for (const node of wordCloudData.nodes) {
+                    const dx = x - (node.x || 0);
+                    const dy = y - (node.y || 0);
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < 60) { // 最小间距
+                        validPosition = false;
+                        break;
+                    }
+                }
+                
+                if (validPosition) break;
+            }
+            
+            wordCloudData.nodes.push({
+                id: newWord,
+                name: newWord,
+                type: 'core',
+                weight: 1.0,
+                source: 'user_added',
+                semanticPath: [newWord], // 新的根节点路径
+                pathDepth: 1,
+                x: x,
+                y: y
+            });
+            
+            // 清空输入框
+            newWordInput.value = '';
+            
+            updateDebugInfo(`✅ 成功添加新根节点: ${newWord}`);
+            
+            // 重新渲染词云
+            renderWordCloud();
+            updateStats();
+            updateCoreNodesList();
+        }
+        
+        // 切换节点选择状态
+        function toggleNodeSelection(nodeId) {
+            const index = wordCloudData.selectedNodes.indexOf(nodeId);
+            if (index > -1) {
+                wordCloudData.selectedNodes.splice(index, 1);
+            } else {
+                wordCloudData.selectedNodes.push(nodeId);
+            }
+        }
+        
+        // 更新节点样式
+        function updateNodeStyles() {
+            d3.selectAll('.word-node')
+                .classed('selected', d => wordCloudData.selectedNodes.includes(d.id));
+        }
+        
+        // 更新连线样式
+        function updateLinkStyles() {
+            d3.selectAll('.word-link')
+                .classed('selected', d => wordCloudData.selectedLinks.includes(d.id));
+        }
+        
+        // 更新统计信息
+        function updateStats() {
+            const totalNodes = wordCloudData.nodes.length;
+            const selectedNodes = wordCloudData.selectedNodes.length;
+            const coreNodes = wordCloudData.nodes.filter(n => n.type === 'core').length;
+            const fuzzyNodes = wordCloudData.nodes.filter(n => n.type === 'fuzzy').length;
+            
+            document.getElementById('totalNodes').textContent = totalNodes;
+            document.getElementById('selectedNodes').textContent = selectedNodes;
+            document.getElementById('coreNodes').textContent = coreNodes;
+            document.getElementById('fuzzyNodes').textContent = fuzzyNodes;
+        }
+        
+        // 更新已选择词汇显示
+        function updateSelectedWords() {
+            const container = document.getElementById('selectedWords');
+            const tagsContainer = document.getElementById('selectedWordTags');
+            
+            if (wordCloudData.selectedNodes.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            container.style.display = 'block';
+            tagsContainer.innerHTML = '';
+            
+            wordCloudData.selectedNodes.forEach(nodeId => {
+                const node = wordCloudData.nodes.find(n => n.id === nodeId);
+                if (node) {
+                    const tag = document.createElement('span');
+                    tag.className = 'selected-word-tag';
+                    tag.textContent = `${node.name} (${node.type === 'core' ? '核心' : '模糊'})`;
+                    tagsContainer.appendChild(tag);
+                }
+            });
+        }
+        
+        // 清空选择
+        function clearSelection() {
+            wordCloudData.selectedNodes = [];
+            wordCloudData.selectedLinks = [];
+            updateNodeStyles();
+            updateLinkStyles();
+            updateStats();
+            updateSelectedWords();
+            updateDebugInfo('🗑️ 已清空所有选择（包括节点和连线）');
+        }
+        
+        // 更新调试信息
+        function updateDebugInfo(message) {
+            const debugInfo = document.getElementById('debugInfo');
+            const timestamp = new Date().toLocaleTimeString();
+            debugInfo.textContent = `[${timestamp}] ${message}`;
+            console.log(message);
+        }
+        
+        // 更新核心词节点列表显示
+        function updateCoreNodesList() {
+            const coreNodes = wordCloudData.nodes.filter(n => n.type === 'core');
+            const listContainer = document.getElementById('coreNodesList');
+            
+            if (coreNodes.length === 0) {
+                listContainer.innerHTML = '等待添加核心词...';
+                return;
+            }
+            
+            const nodeList = coreNodes.map(node => {
+                const childCount = wordCloudData.nodes.filter(n => 
+                    n.semanticPath && n.semanticPath[0] === node.name && n.semanticPath.length > 1
+                ).length;
+                
+                return `<span style="display: inline-block; margin: 2px 5px; padding: 4px 8px; background: #4facfe; color: white; border-radius: 12px; font-size: 12px;">
+                    ${node.name} (${childCount}个分支)
+                </span>`;
+            }).join('');
+            
+            listContainer.innerHTML = `当前根节点: ${nodeList}`;
+        }
+        
+        // 处理新核心词输入的回车键
+        function handleNewWordKeypress(event) {
+            if (event.key === 'Enter') {
+                addNewCoreWord();
+            }
+        }
+        
+        // 创建语义连线
+        function createSemanticLink(sourceNode, targetNode, linkType) {
+            const linkId = `semantic_${sourceNode.id}_${targetNode.id}`;
+            
+            // 避免重复连线
+            if (wordCloudData.semanticLinks.find(l => l.id === linkId)) {
+                return;
+            }
+            
+            wordCloudData.semanticLinks.push({
+                id: linkId,
+                source: sourceNode,
+                target: targetNode,
+                type: linkType, // 'solid' 或 'dashed'
+                relation: 'semantic_path',
+                linkIndex: wordCloudData.semanticLinks.length, // 索引用于弧度计算
+                createdAt: Date.now(), // 🕒 添加创建时间
+                sourceWeight: sourceNode.weight || 1.0, // 🎯 源节点权重
+                targetWeight: targetNode.weight || 0.5, // 🎯 目标节点权重
+                pathDepth: targetNode.pathDepth || 1 // 🎯 路径深度
+            });
+        }
+        
+        // 将节点路径上的连线升级为实线（用户确认）
+        function upgradePathToSolid(node) {
+            if (!node.parentNode) return;
+            
+            // 找到父节点
+            const parentNode = wordCloudData.nodes.find(n => n.id === node.parentNode || n.name === node.parentNode);
+            if (!parentNode) return;
+            
+            // 升级与父节点的连线
+            const linkToParent = wordCloudData.semanticLinks.find(l => 
+                (l.source.id === parentNode.id && l.target.id === node.id) ||
+                (l.source.id === node.id && l.target.id === parentNode.id)
+            );
+            
+            if (linkToParent && linkToParent.type === 'dashed') {
+                linkToParent.type = 'solid';
+                console.log(`✨ 连线升级: ${parentNode.name} → ${node.name} 从虚线变实线`);
+            }
+            
+            // 递归升级父节点路径
+            upgradePathToSolid(parentNode);
+        }
+        
+        // 🎨 计算基于权重的虚线透明度 - 类似截图效果
+        function calculateDashedLinkOpacity(link) {
+            if (link.type !== 'dashed') return 0.9; // 实线保持高透明度
+            
+            const targetWeight = link.targetWeight || 0.5;
+            const pathDepth = link.pathDepth || 1;
+            
+            // 🎯 权重因子：权重越高，虚线越清晰 (0.25-0.85)
+            const weightFactor = Math.max(0.25, Math.min(0.85, targetWeight * 0.7 + 0.25));
+            
+            // 🎯 层级因子：路径越深，早期连线越浅 (0.4-1.0)
+            const depthFactor = Math.max(0.4, 1.0 - (pathDepth - 1) * 0.15);
+            
+            // 🎯 时间因子：越新的连线越清晰
+            const allDashedLinks = wordCloudData.semanticLinks
+                .filter(l => l.type === 'dashed' && l.createdAt)
+                .sort((a, b) => b.createdAt - a.createdAt);
+            const linkIndex = allDashedLinks.findIndex(l => l.id === link.id);
+            const timeFactor = Math.max(0.6, 1.0 - linkIndex * 0.1);
+            
+            return weightFactor * depthFactor * timeFactor;
+        }
+        
+        // 🎨 获取虚线层级颜色 - 截图风格中性灰色
+        function getDashedLinkColor(link) {
+            if (link.type !== 'dashed') return '#007AFF'; // 实线用苹果蓝色
+            
+            const targetWeight = link.targetWeight || 0.5;
+            const pathDepth = link.pathDepth || 1;
+            
+            // 🎨 基于权重和层级的灰色选择 - 类似截图效果
+            if (targetWeight > 0.7) {
+                return '#6B7280'; // 高权重：较深灰
+            } else if (targetWeight > 0.4) {
+                return '#8F97A1'; // 中权重：中等灰  
+            } else {
+                return '#A8AFB7'; // 低权重：较浅灰
+            }
+        }
+
+        // 🌊 层级淡化机制：当扩展新节点时，让早期虚线变浅
+        function updateAllDashedLinksOnExpansion() {
+            // 为所有虚线添加平滑过渡动画
+            d3.selectAll('.semantic-link.dashed')
+                .transition()
+                .duration(800)
+                .ease(d3.easeQuadOut)
+                .style('stroke-opacity', d => calculateDashedLinkOpacity(d));
+        }
+        
+        // 更新连线视觉状态 - 基于权重的智能透明度系统
+        function updateSemanticLinkStyles() {
+            d3.selectAll('.semantic-link')
+                .attr('class', d => `semantic-link ${d.type}`)
+                .style('stroke', d => getDashedLinkColor(d))
+                .style('stroke-width', d => d.type === 'solid' ? '1.8' : '2.0') // 统一虚线宽度
+                .style('stroke-opacity', d => calculateDashedLinkOpacity(d)) // 🎯 使用权重透明度
+                .style('stroke-dasharray', d => d.type === 'solid' ? 'none' : '6,3'); // 更细致的虚线样式
+        }
+        
+        // 🎯 导出大纲功能
+        function exportOutline() {
+            if (wordCloudData.nodes.length === 0) {
+                alert('请先生成词云！');
+                return;
+            }
+            
+            let outline = '# 词云大纲\n\n';
+            
+            // 核心词汇
+            const coreNodes = wordCloudData.nodes.filter(n => n.type === 'core');
+            outline += '## 核心词汇\n';
+            coreNodes.forEach(node => {
+                outline += `- **${node.name}**\n`;
+            });
+            
+            // 按语义路径组织扩展词汇
+            outline += '\n## 语义扩展\n';
+            const fuzzyNodes = wordCloudData.nodes.filter(n => n.type === 'fuzzy');
+            
+            // 按路径深度分组
+            const pathGroups = {};
+            fuzzyNodes.forEach(node => {
+                const rootPath = node.semanticPath?.[0] || '未知';
+                if (!pathGroups[rootPath]) pathGroups[rootPath] = [];
+                pathGroups[rootPath].push(node);
+            });
+            
+            Object.keys(pathGroups).forEach(rootPath => {
+                outline += `\n### ${rootPath}\n`;
+                pathGroups[rootPath].forEach(node => {
+                    const pathStr = node.semanticPath?.join(' → ') || node.name;
+                    outline += `- ${node.name} (${pathStr})\n`;
+                });
+            });
+            
+            // 下载文件
+            const blob = new Blob([outline], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '词云大纲.md';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            updateDebugInfo('✅ 大纲已导出为 Markdown 文件');
+        }
+        
+        // 🎯 导出高清图谱功能
+        function exportHighResImage() {
+            if (wordCloudData.nodes.length === 0) {
+                alert('请先生成词云！');
+                return;
+            }
+            
+            const svg = document.getElementById('wordCloudSvg');
+            const svgData = new XMLSerializer().serializeToString(svg);
+            
+            // 创建高分辨率Canvas
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 设置高分辨率
+            const scale = 3; // 3倍分辨率
+            canvas.width = svg.clientWidth * scale;
+            canvas.height = svg.clientHeight * scale;
+            
+            // 创建图像
+            const img = new Image();
+            const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            
+            img.onload = function() {
+                // 绘制到Canvas
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // 下载高清图片
+                canvas.toBlob(function(blob) {
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    a.download = '词云图谱_高清.png';
+                    a.click();
+                    URL.revokeObjectURL(downloadUrl);
+                }, 'image/png', 1.0);
+                
+                URL.revokeObjectURL(url);
+                updateDebugInfo('✅ 高清图谱已导出为 PNG 文件');
+            };
+            
+            img.src = url;
+        }
+        
+        // 页面加载完成初始化
+        window.onload = function() {
+            updateDebugInfo('🚀 模糊词云测试器已就绪，请输入核心词后点击生成');
+        };
+    </script>
+</body>
+</html>
