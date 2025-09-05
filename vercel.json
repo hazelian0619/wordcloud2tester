@@ -1,18 +1,11 @@
 {
   "version": 2,
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
+  "builds": [
+    { "src": "api/*.py", "use": "@vercel/python" },
+    { "src": "index.html", "use": "@vercel/static" }
   ],
-  "env": {
-    "OPENAI_API_KEY": "sk-cFt8t6WmtG5pPI03Qr4j9cVhTHwnzqM8Xmmq89wzgJYhN1bQ",
-    "OPENAI_BASE_URL": "https://tbnx.plus7.plus/v1",
-    "OPENAI_MODEL": "deepseek-chat"
-  }
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1.py" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
 }
