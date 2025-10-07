@@ -4,7 +4,42 @@
     <meta charset="UTF-8">
     <title>词云测试器</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="i18n-translations.js"></script>
     <style>
+        /* 🌐 语言切换按钮 */
+        .lang-switch {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            gap: 5px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 12px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+        }
+        .lang-switch button {
+            padding: 6px 12px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 15px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            color: #666;
+        }
+        .lang-switch button:hover {
+            background: rgba(0,122,255,0.1);
+            color: #007AFF;
+        }
+        .lang-switch button.active {
+            background: #007AFF;
+            color: white;
+        }
+
         body { 
             font-family: 
                 -apple-system,           /* 🍎 苹果系统字体 - 英文优先 */
@@ -583,10 +618,16 @@
     </style>
 </head>
 <body>
+    <!-- 🌐 语言切换按钮 -->
+    <div class="lang-switch">
+        <button id="lang-zh" class="active" onclick="switchLanguage('zh')">中文</button>
+        <button id="lang-en" onclick="switchLanguage('en')">English</button>
+    </div>
+
     <div class="container">
         <div class="header">
-            <h1>词云测试器</h1>
-            <p>基于语义路径的智能词汇扩展与可视化</p>
+            <h1 data-i18n="title">词云测试器</h1>
+            <p data-i18n="subtitle">基于语义路径的智能词汇扩展与可视化</p>
         </div>
         
         <!-- 🍎 一体化控制组件 -->
@@ -595,30 +636,30 @@
             <div class="config-section">
                 <div class="config-grid">
                     <div class="input-group">
-                        <label for="coreWords">核心词汇</label>
-                        <input type="text" id="coreWords" placeholder="潮汕菜">
+                        <label for="coreWords" data-i18n="label.coreWords">核心词汇</label>
+                        <input type="text" id="coreWords" data-i18n-placeholder="placeholder.coreWords" placeholder="潮汕菜">
                     </div>
-                    
+
                     <div class="input-group">
-                        <label for="newCoreWord">动态添加</label>
-                        <input type="text" id="newCoreWord" placeholder="输入新核心词" onkeypress="handleNewWordKeypress(event)">
+                        <label for="newCoreWord" data-i18n="label.newCoreWord">动态添加</label>
+                        <input type="text" id="newCoreWord" data-i18n-placeholder="placeholder.newCoreWord" placeholder="输入新核心词" onkeypress="handleNewWordKeypress(event)">
                     </div>
-                    
+
                     <div class="input-group">
-                        <label for="nodeCount">节点数量</label>
+                        <label for="nodeCount" data-i18n="label.nodeCount">节点数量</label>
                         <select id="nodeCount">
-                            <option value="10">精简(10个)</option>
-                            <option value="15" selected>适中(15个)</option>
-                            <option value="25">丰富(25个)</option>
+                            <option value="10" data-i18n="option.nodeCount.minimal">精简(10个)</option>
+                            <option value="15" selected data-i18n="option.nodeCount.moderate">适中(15个)</option>
+                            <option value="25" data-i18n="option.nodeCount.abundant">丰富(25个)</option>
                         </select>
                     </div>
-                    
+
                     <div class="input-group">
-                        <label for="layoutMode">布局模式</label>
+                        <label for="layoutMode" data-i18n="label.layoutMode">布局模式</label>
                         <select id="layoutMode">
-                            <option value="radial">径向分布</option>
-                            <option value="cluster">聚类分布</option>
-                            <option value="force">自由力导向</option>
+                            <option value="radial" data-i18n="option.layoutMode.radial">径向分布</option>
+                            <option value="cluster" data-i18n="option.layoutMode.cluster">聚类分布</option>
+                            <option value="force" data-i18n="option.layoutMode.force">自由力导向</option>
                         </select>
                     </div>
                 </div>
@@ -626,11 +667,11 @@
             
             <!-- 操作区域 -->
             <div class="action-section">
-                <button class="btn btn-primary" onclick="generateWordCloud()">生成词云</button>
+                <button class="btn btn-primary" onclick="generateWordCloud()" data-i18n="button.generate">生成词云</button>
                 <div class="secondary-actions">
-                    <button class="btn btn-secondary" onclick="addNewCoreWord()">添加节点</button>
-                    <button class="btn btn-secondary" onclick="clearSelection()">清空选择</button>
-                    <button class="btn btn-secondary" onclick="toggleConnectionMode()" id="connectionBtn">连线模式</button>
+                    <button class="btn btn-secondary" onclick="addNewCoreWord()" data-i18n="button.addNode">添加节点</button>
+                    <button class="btn btn-secondary" onclick="clearSelection()" data-i18n="button.clearSelection">清空选择</button>
+                    <button class="btn btn-secondary" onclick="toggleConnectionMode()" id="connectionBtn" data-i18n="button.connectionMode">连线模式</button>
                 </div>
             </div>
         </div>
@@ -640,28 +681,28 @@
             <div class="stats-data">
                 <div class="stat-item">
                     <div class="stat-value" id="totalNodes">0</div>
-                    <div class="stat-label">总节点数</div>
+                    <div class="stat-label" data-i18n="stats.totalNodes">总节点数</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="selectedNodes">0</div>
-                    <div class="stat-label">已选择</div>
+                    <div class="stat-label" data-i18n="stats.selectedNodes">已选择</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="coreNodes">0</div>
-                    <div class="stat-label">核心词</div>
+                    <div class="stat-label" data-i18n="stats.coreNodes">核心词</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="fuzzyNodes">0</div>
-                    <div class="stat-label">模糊词</div>
+                    <div class="stat-label" data-i18n="stats.fuzzyNodes">模糊词</div>
                 </div>
             </div>
-            
+
             <!-- 🍎 导出操作区域 -->
             <div class="export-actions">
-                <button class="btn-compact" onclick="exportOutline()" title="导出Markdown大纲">
+                <button class="btn-compact" onclick="exportOutline()" data-i18n="button.exportOutline" data-i18n-title="title.exportOutline" title="导出Markdown大纲">
                     导出大纲
                 </button>
-                <button class="btn-compact" onclick="exportHighResImage()" title="导出高清PNG图谱">
+                <button class="btn-compact" onclick="exportHighResImage()" data-i18n="button.exportImage" data-i18n-title="title.exportImage" title="导出高清PNG图谱">
                     导出图谱
                 </button>
             </div>
@@ -697,6 +738,75 @@
     </div>
 
     <script>
+        // 🌐 国际化管理器
+        let currentLanguage = localStorage.getItem('language') || 'zh';
+
+        // 切换语言函数
+        function switchLanguage(lang) {
+            currentLanguage = lang;
+            localStorage.setItem('language', lang);
+
+            // 更新语言按钮状态
+            document.getElementById('lang-zh').classList.toggle('active', lang === 'zh');
+            document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+
+            // 更新所有文本
+            updateAllTexts();
+        }
+
+        // 更新所有文本
+        function updateAllTexts() {
+            const translations = i18nTranslations[currentLanguage];
+
+            // 更新标题和页面title
+            document.title = translations.title;
+            document.documentElement.lang = currentLanguage === 'zh' ? 'zh-CN' : 'en';
+
+            // 更新所有data-i18n元素
+            document.querySelectorAll('[data-i18n]').forEach(element => {
+                const key = element.getAttribute('data-i18n');
+                const translation = getNestedTranslation(translations, key);
+                if (translation) {
+                    element.textContent = translation;
+                }
+            });
+
+            // 更新placeholder
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(element => {
+                const key = element.getAttribute('data-i18n-placeholder');
+                const translation = getNestedTranslation(translations, key);
+                if (translation) {
+                    element.placeholder = translation;
+                }
+            });
+
+            // 更新title属性
+            document.querySelectorAll('[data-i18n-title]').forEach(element => {
+                const key = element.getAttribute('data-i18n-title');
+                const translation = getNestedTranslation(translations, key);
+                if (translation) {
+                    element.title = translation;
+                }
+            });
+        }
+
+        // 获取嵌套翻译
+        function getNestedTranslation(obj, path) {
+            return path.split('.').reduce((current, key) => current?.[key], obj);
+        }
+
+        // 页面加载时初始化语言
+        document.addEventListener('DOMContentLoaded', () => {
+            // 初始化语言按钮状态
+            document.getElementById('lang-zh').classList.toggle('active', currentLanguage === 'zh');
+            document.getElementById('lang-en').classList.toggle('active', currentLanguage === 'en');
+
+            // 如果是英文，则更新文本
+            if (currentLanguage === 'en') {
+                updateAllTexts();
+            }
+        });
+
         // 全局状态
         let wordCloudData = {
             nodes: [],
