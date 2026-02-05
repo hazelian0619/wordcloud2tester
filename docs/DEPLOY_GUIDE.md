@@ -83,3 +83,62 @@
 
 🆘 **需要帮助？** 
 如果遇到任何问题，请截图发送给我，我会帮你解决！
+
+---
+
+## 🐳 Docker Deployment (Alternative)
+
+This section covers deploying WordCloud Emergence using Docker containers, migrated from Creative-Writing project practices.
+
+### Prerequisites
+- Docker installed
+- Docker Compose installed
+
+### Quick Docker Setup
+
+1. **Build the Docker image**
+   ```bash
+   docker build -t wordcloud-emergence .
+   ```
+
+2. **Run the container**
+   ```bash
+   docker run -p 8000:8000 -e OPENAI_API_KEY="your-key-here" wordcloud-emergence
+   ```
+
+3. **Access the application**
+   - Frontend: http://localhost:8000
+   - API docs: http://localhost:8000/docs
+
+### Docker Compose Configuration
+
+Create `docker-compose.yml` in the root directory:
+
+```yaml
+version: '3.8'
+
+services:
+  wordcloud-backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+```
+
+Run with:
+```bash
+docker-compose up -d
+```
+
+### Production Considerations
+
+- **Environment Variables**: Set `OPENAI_API_KEY` securely
+- **Volumes**: Mount data directory for persistence
+- **Networking**: Configure reverse proxy for production
+- **Monitoring**: Add health checks and logging
+
+This Docker setup provides a robust, containerized deployment option inspired by the Creative-Writing project's industrial-grade containerization practices.

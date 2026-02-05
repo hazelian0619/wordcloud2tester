@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEBUG=${DEBUG:-false}
+      - ENVIRONMENT=production
+    volumes:
+      - ./data:/app/data:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - wordcloud-network
+
+  # Optional: Frontend development server
+  frontend-dev:
+    image: node:18-alpine
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm start"
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    profiles:
+      - dev
+    networks:
+      - wordcloud-network
+
+  # Database (optional, for future use)
+  # postgres:
+  #   image: postgres:14-alpine
+  #   environment:
+  #     POSTGRES_DB: wordcloud
+  #     POSTGRES_USER: wordcloud
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   networks:
+  #     - wordcloud-network
+
+  # Redis (optional, for caching)
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   networks:
+  #     - wordcloud-network
+
+networks:
+  wordcloud-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
