@@ -3,7 +3,7 @@
   "buildCommand": "pip install -r requirements.txt",
   "functions": {
     "src/wordcloud_emergence/*.py": {
-      "runtime": "python3.12"
+      "runtime": "python@3.12"
     }
   },
   "rewrites": [
