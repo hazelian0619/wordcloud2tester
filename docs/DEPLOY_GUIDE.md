@@ -25,7 +25,7 @@
 
 | 变量名 | 值 |
 |--------|-----|
-| `OPENAI_API_KEY` | `sk-cFt8t6WmtG5pPI03Qr4j9cVhTHwnzqM8Xmmq89wzgJYhN1bQ` |
+| `OPENAI_API_KEY` | `<set-in-vercel-dashboard>` |
 | `OPENAI_BASE_URL` | `https://tbnx.plus7.plus/v1` |
 | `OPENAI_MODEL` | `deepseek-chat` |
 
