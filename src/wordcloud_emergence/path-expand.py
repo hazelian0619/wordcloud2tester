@@ -354,12 +354,12 @@ class handler(BaseHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             request_data = json.loads(post_data.decode('utf-8'))
 
-            # 提取参数
-            parent_concept = request_data.get('concept', '')
-            target_count = request_data.get('count', 8)
+            # 提取参数（兼容新旧前端字段）
+            parent_concept = request_data.get('current_concept') or request_data.get('concept', '')
+            target_count = request_data.get('target_count', request_data.get('count', 8))
 
             if not parent_concept:
-                self._send_error("Missing 'concept' parameter")
+                self._send_error("Missing concept parameter: use 'current_concept' or 'concept'")
                 return
 
             # 生成响应
