@@ -33,19 +33,21 @@ class VercelGATExpander:
     def generate_semantic_concepts(self, parent_concept: str, target_count: int = 8) -> List[Dict[str, Any]]:
         """生成语义相关概念"""
         
-        # 优化的提示词 - 专注于语义扩展
-        system_prompt = f"""你是一个语义概念扩展专家。根据给定的核心概念，生成{target_count}个语义相关的概念词汇。
+        # 优化的提示词 - 专注于语义扩展，并让模型自行评估语义相关强度
+        system_prompt = f"""你是一个语义概念扩展专家。根据给定的核心概念，生成{target_count}个语义相关的概念词汇，并为每个概念评估它与核心概念的“语义相关强度”。
 
 要求：
-1. 生成的概念应该在语义上与核心概念紧密相关
-2. 按照相关性强度降序排列
-3. 每个概念都应该是简洁的词汇或短语
-4. 涵盖不同的语义维度（如类别、属性、功能、关联等）
+1. 生成的概念应该在语义上与核心概念相关，但要覆盖不同的语义维度（类别、属性、功能、文化关联、对立面等），不要只给近义词
+2. 语义相关强度是一个 0.00–1.00 的小数：1.00 表示几乎等价/核心关联，越低表示越是外围、跨界、意外的联想
+3. 强度要真实反映你的判断，允许出现并列或非线性的分布，不要机械地按名次递减
+4. 每个概念都应该是简洁的词汇或短语（不超过10个字）
 
-输出格式：只返回概念列表，每行一个，不需要编号：
-概念1
-概念2
-概念3
+输出格式：严格每行一个，用竖线分隔概念和强度，不要编号、不要多余说明：
+概念|强度
+例如：
+相对论|0.95
+平行宇宙|0.82
+永恒|0.61
 ..."""
 
         user_prompt = f"核心概念：{parent_concept}"
@@ -53,18 +55,35 @@ class VercelGATExpander:
         try:
             print(f"🚀 调用API生成概念: {parent_concept}")
             print(f"🔧 API配置: {self.base_url}, 模型: {self.model}")
-            
-            response = openai.ChatCompletion.create(
-                model=self.model,
-                messages=[
+
+            # 该网关把 gpt-5 系列转发到 Responses API，只接受 max_completion_tokens，
+            # 拒绝旧 SDK 默认的 max_tokens。这里逐级降级，保证不同网关都能跑通。
+            base_args = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.7,
-                max_tokens=300,
-                timeout=30
-            )
-            
+                "temperature": 0.7,
+                "timeout": 30,
+            }
+            response = None
+            last_err = None
+            for extra in ({"max_completion_tokens": 800}, {"max_tokens": 800}, {}):
+                try:
+                    response = openai.ChatCompletion.create(**base_args, **extra)
+                    break
+                except Exception as call_err:
+                    last_err = call_err
+                    msg = str(call_err).lower()
+                    # 仅在“参数不被支持”这类错误时才降级重试，其它错误直接抛出
+                    if "token" in msg or "unsupported parameter" in msg or "unexpected" in msg:
+                        print(f"⚠️  参数不兼容，降级重试: {call_err}")
+                        continue
+                    raise
+            if response is None:
+                raise last_err
+
             content = response.choices[0].message.content.strip()
             print(f"📝 API响应: {content}")
             print(f"📊 响应长度: {len(content)} 字符")
@@ -75,18 +94,33 @@ class VercelGATExpander:
             print(f"📋 解析到 {len(lines)} 行内容")
             
             for i, line in enumerate(lines[:target_count]):
-                # 清理概念文本
-                concept = re.sub(r'^\d+[\.\)]\s*', '', line)  # 移除数字前缀
-                concept = concept.strip()
-                print(f"🔍 处理第 {i+1} 行: '{line}' -> '{concept}'")
-                
+                # 解析 "概念|强度" 格式；兼容旧格式（无分隔符则回退按名次估算）
+                raw = re.sub(r'^\d+[\.\)]\s*', '', line).strip()  # 移除可能的数字前缀
+
+                concept = raw
+                model_weight = None
+                if '|' in raw:
+                    parts = raw.split('|')
+                    concept = parts[0].strip()
+                    try:
+                        model_weight = float(re.sub(r'[^0-9.]', '', parts[1]))
+                    except (ValueError, IndexError):
+                        model_weight = None
+
+                concept = concept.strip().strip('"“”\'')
+                print(f"🔍 处理第 {i+1} 行: '{line}' -> 概念='{concept}', 权重={model_weight}")
+
                 if concept and len(concept) > 0:
-                    # 生成权重：按顺序递减
-                    weight = max(0.95 - (i * 0.05), 0.3)
-                    
+                    # 优先使用模型给出的真实语义强度；缺失时才回退到按名次递减
+                    if model_weight is not None and 0 < model_weight <= 1.0:
+                        weight = model_weight
+                    else:
+                        weight = max(0.95 - (i * 0.05), 0.3)
+
                     concepts.append({
                         "name": concept,
                         "weight": round(weight, 3),
+                        "weight_source": "model" if model_weight is not None else "rank",
                         "total_path_weight": 1.0,
                         "weighted_influence": 1.0,
                         "individual_influences": [1.0],
