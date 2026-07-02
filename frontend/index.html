@@ -971,13 +971,16 @@
             };
         }
         
-        // 🔧 动态simulation更新：增量式添加节点，避免重置
-        function updateSimulationWithNewNodes(newNodes) {
+        // 🔧 动态simulation更新：增量式添加节点，围绕父节点局部生长（不影响初始布局）
+        // parentNode: 本次展开被点击的节点（新节点的共同父节点），新节点将围绕它生长
+        function updateSimulationWithNewNodes(newNodes, parentNode) {
             if (!wordCloudData.simulation) {
                 console.warn('⚠️ Simulation未初始化，将触发完整重新渲染');
                 renderWordCloud();
                 return;
             }
+
+            const sim = wordCloudData.simulation;
 
             // 🎯 关键：临时固定所有老节点，让力模拟只推动新节点找位置，老节点/视角不动
             const newIds = new Set(newNodes.map(n => n.id));
@@ -990,21 +993,35 @@
                 }
             });
 
-            // 💡 D3最佳实践：用 .nodes() 更新节点集合，而非重建 simulation
-            wordCloudData.simulation
-                .nodes(wordCloudData.nodes)
-                .alpha(0.3) // 适度重启动能，仅新节点响应（老节点已被 fx/fy 固定）
+            // 🎯 增量展开专用力配置（仅本次展开期间生效，结束后恢复）：
+            //   1) 摘掉 forceCenter —— 否则新节点会被拉回画布中心/旧片区
+            //   2) 挂局部 forceX/forceY —— 把新节点拉向被点击父节点的坐标，实现“就地生长”
+            const savedCenter = sim.force('center'); // 记住原来的居中力，稍后恢复
+            const anchorX = (parentNode && parentNode.x != null) ? parentNode.x : (wordCloudData._lastWidth || 800) / 2;
+            const anchorY = (parentNode && parentNode.y != null) ? parentNode.y : (wordCloudData._lastHeight || 600) / 2;
+
+            sim.force('center', null);
+            // 只对新节点施加锚定力：老节点已 pinned（fx/fy），forceX/Y 对它们无效
+            sim.force('_growX', d3.forceX(anchorX).strength(d => newIds.has(d.id) ? 0.25 : 0));
+            sim.force('_growY', d3.forceY(anchorY).strength(d => newIds.has(d.id) ? 0.25 : 0));
+
+            sim.nodes(wordCloudData.nodes)
+                .alpha(0.3) // 适度加热，仅新节点响应（老节点已 fx/fy 固定）
                 .restart();
 
-            // 复用全量渲染的停止策略：一段时间后固定并释放老节点约束
+            // 一段时间后停止，并恢复初始布局的力配置、释放老节点约束
             clearTimeout(wordCloudData._simStopTimer);
             wordCloudData._simStopTimer = setTimeout(() => {
-                wordCloudData.simulation.stop();
+                sim.stop();
+                // 移除临时锚定力、恢复原居中力（保证下次全量渲染/初始手感不受影响）
+                sim.force('_growX', null);
+                sim.force('_growY', null);
+                if (savedCenter) sim.force('center', savedCenter);
                 // 释放临时固定的老节点（仅释放我们固定的，不动用户手动拖拽固定的）
                 pinnedNodes.forEach(n => { n.fx = null; n.fy = null; });
             }, 1500);
 
-            console.log(`🔧 增量更新simulation：新增${newNodes.length}个节点，临时固定${pinnedNodes.length}个老节点`);
+            console.log(`🔧 增量：新增${newNodes.length}个节点，围绕「${parentNode?.name || '?'}」(${Math.round(anchorX)},${Math.round(anchorY)})生长，固定${pinnedNodes.length}个老节点`);
         }
         
         // 🎨 增量视觉更新：D3 Enter/Update/Exit模式（与 renderWordCloud 的节点/连线创建逻辑保持一致）
@@ -1622,6 +1639,8 @@ ${semanticPath.map((word, index) => {
 
             const width = container.clientWidth;
             const height = container.clientHeight;
+            wordCloudData._lastWidth = width;   // 记录画布尺寸，供增量展开的兜底锚点使用
+            wordCloudData._lastHeight = height;
 
             // 清空容器（仅初始化时做一次）
             d3.select(container).selectAll('*').remove();
@@ -2241,8 +2260,8 @@ ${semanticPath.map((word, index) => {
                 
                 updateDebugInfo(`✅ 路径扩展完成！从 ${(node.semanticPath || [node.name]).join('→')} 扩展了 ${newConcepts.length} 个概念:\n${pathInfo}`);
                 
-                // 🌱 增量渲染：只添加新节点，保持视角/老节点不动（不再全量重绘）
-                updateSimulationWithNewNodes(newlyAddedNodes);
+                // 🌱 增量渲染：新节点围绕被点击的父节点 node 就地生长，保持视角/老节点不动
+                updateSimulationWithNewNodes(newlyAddedNodes, node);
                 updateVisualization();
                 updateCoreNodesList();
                 
@@ -2354,8 +2373,8 @@ ${semanticPath.map((word, index) => {
 
             updateDebugInfo(`✅ 成功添加新根节点: ${newWord}`);
 
-            // 🌱 增量：新根节点长出来，保持视角/老节点不动
-            updateSimulationWithNewNodes([addedCoreNode]);
+            // 🌱 增量：新根节点在自身位置就地出现（以自己为锚，不被拉向别处）
+            updateSimulationWithNewNodes([addedCoreNode], addedCoreNode);
             updateVisualization();
             updateStats();
             updateCoreNodesList();
