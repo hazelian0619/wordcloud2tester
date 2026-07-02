@@ -22,5 +22,12 @@ def run():
         top3 = [c['name'] for c in sorted(concepts, key=lambda x: -x['weight'])[:3]]
         print(f"  权重降序前3: {top3}")
 
+    print("\n########## 交集涌现 ##########")
+    for a, b in [("龙", "少女"), ("咖啡", "雨")]:
+        concepts = exp.generate_intersection_concepts(a, b, 8)
+        print(f"\n=== {a} × {b} ===")
+        for c in concepts:
+            print(f"  {c['name']:<12} {c['weight']:.2f}")
+
 if __name__ == "__main__":
     run()

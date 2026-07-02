@@ -144,3 +144,8 @@ yarn-error.log*
 # Temporary files
 *.tmp
 *.temp
+
+# 本地开发备份与日志（不应进仓库）
+.backups/
+dev_server.log
+dev_server*.log

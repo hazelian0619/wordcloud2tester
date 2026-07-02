@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Initial release of WordCloud Emergence
-- GAT-powered semantic network exploration
+- LLM-powered semantic network exploration
 - Fuzzy semantic understanding with AI
-- Attention-weighted concept visualization
+- Relatedness-weighted concept visualization
 - Interactive D3.js force-directed graphs
 - FastAPI backend with OpenAI integration
 - Docker containerization support
@@ -27,8 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-language Support**: Internationalization ready
 
 ### Technical
-- **Backend**: FastAPI with async support
-- **AI/ML**: OpenAI API, PyTorch, Graph Attention Networks
+- **Backend**: Python stdlib `http.server` handler (Vercel serverless / local dev)
+- **AI/ML**: OpenAI-compatible LLM API (prompt-engineered semantic expansion)
 - **Frontend**: Vanilla JavaScript with D3.js
 - **Deployment**: Vercel, Docker, Kubernetes ready
 - **Testing**: pytest with coverage reporting

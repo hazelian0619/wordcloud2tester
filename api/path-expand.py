@@ -18,8 +18,8 @@ class VercelGATExpander:
     def __init__(self):
         # 使用环境变量配置API
         self.api_key = os.getenv('OPENAI_API_KEY')
-        self.base_url = os.getenv('OPENAI_BASE_URL', 'https://tbnx.plus7.plus/v1')
-        self.model = os.getenv('OPENAI_MODEL', 'deepseek-chat')
+        self.base_url = os.getenv('OPENAI_BASE_URL', 'https://tok.fan/v1')
+        self.model = os.getenv('OPENAI_MODEL', 'gpt-5.5')
         
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
@@ -34,115 +34,127 @@ class VercelGATExpander:
         """生成语义相关概念"""
         
         # 优化的提示词 - 专注于语义扩展，并让模型自行评估语义相关强度
-        system_prompt = f"""你是一位资深创意总监，专门为广告、设计、写作寻找「意外但精准」的灵感锚点。
+        system_prompt = f"""你是一个语义概念扩展专家。根据给定的核心概念，生成{target_count}个语义相关的概念词汇，并为每个概念评估它与核心概念的“语义相关强度”。
 
-给你一个核心概念，你要产出 {target_count} 个概念，但**不是找近义词或相关词**——那些谁都想得到，毫无价值。你要找的是：**同时活在这个核心概念的气质里、却是大多数人第一反应绝对想不到的意外形象**。
+要求：
+1. 生成的概念应该在语义上与核心概念相关，但要覆盖不同的语义维度（类别、属性、功能、文化关联、对立面等），不要只给近义词
+2. 语义相关强度是一个 0.00–1.00 的小数：1.00 表示几乎等价/核心关联，越低表示越是外围、跨界、意外的联想
+3. 强度要真实反映你的判断，允许出现并列或非线性的分布，不要机械地按名次递减
+4. 每个概念都应该是简洁的词汇或短语（不超过10个字）
 
-铁律：
-1. 拒绝同义词、上下位词、教科书目录词。（如核心词「时空」，禁止输出「时间/空间/维度/相对论/黑洞」这类物理课本词；如「孤独」，禁止「寂静/疏离/陪伴」这类同义抽象词。）
-2. 追求跨领域、跨文化的意外联想：一个历史人物、一个具体画面、一个自然意象、一个对立面、一种通感……让 {target_count} 个结果散布在不同维度，不要挤在一个角落。
-3. 每个概念都必须能勾起一个**具体的形象或画面**，能被创意人直接拿去用，而不是抽象大词。
-4. 每个概念简洁（不超过10个字）。
-
-权重是 0.00–1.00 的小数，代表这个概念的「**惊喜度 × 可用性**」：越是意外又精准、越能让人眼前一亮的，分越高；越平庸、越显而易见的，分越低。**不要**给最像核心词的词高分。
-
-输出格式：严格每行一个，竖线分隔概念和权重，不要编号、不要解释：
-概念|权重
-例如（核心词「孤独」）：
-灯塔看守人|0.94
-最后一班地铁|0.88
-备用钥匙|0.79
+输出格式：严格每行一个，用竖线分隔概念和强度，不要编号、不要多余说明：
+概念|强度
+例如：
+相对论|0.95
+平行宇宙|0.82
+永恒|0.61
 ..."""
 
         user_prompt = f"核心概念：{parent_concept}"
-        
+
         try:
             print(f"🚀 调用API生成概念: {parent_concept}")
-            print(f"🔧 API配置: {self.base_url}, 模型: {self.model}")
-
-            # 该网关把 gpt-5 系列转发到 Responses API，只接受 max_completion_tokens，
-            # 拒绝旧 SDK 默认的 max_tokens。这里逐级降级，保证不同网关都能跑通。
-            base_args = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.7,
-                "timeout": 30,
-            }
-            response = None
-            last_err = None
-            for extra in ({"max_completion_tokens": 800}, {"max_tokens": 800}, {}):
-                try:
-                    response = openai.ChatCompletion.create(**base_args, **extra)
-                    break
-                except Exception as call_err:
-                    last_err = call_err
-                    msg = str(call_err).lower()
-                    # 仅在“参数不被支持”这类错误时才降级重试，其它错误直接抛出
-                    if "token" in msg or "unsupported parameter" in msg or "unexpected" in msg:
-                        print(f"⚠️  参数不兼容，降级重试: {call_err}")
-                        continue
-                    raise
-            if response is None:
-                raise last_err
-
-            content = response.choices[0].message.content.strip()
+            content = self._chat(system_prompt, user_prompt)
             print(f"📝 API响应: {content}")
-            print(f"📊 响应长度: {len(content)} 字符")
-            
-            # 解析概念列表
-            concepts = []
-            lines = [line.strip() for line in content.split('\n') if line.strip()]
-            print(f"📋 解析到 {len(lines)} 行内容")
-            
-            for i, line in enumerate(lines[:target_count]):
-                # 解析 "概念|强度" 格式；兼容旧格式（无分隔符则回退按名次估算）
-                raw = re.sub(r'^\d+[\.\)]\s*', '', line).strip()  # 移除可能的数字前缀
-
-                concept = raw
-                model_weight = None
-                if '|' in raw:
-                    parts = raw.split('|')
-                    concept = parts[0].strip()
-                    try:
-                        model_weight = float(re.sub(r'[^0-9.]', '', parts[1]))
-                    except (ValueError, IndexError):
-                        model_weight = None
-
-                concept = concept.strip().strip('"“”\'')
-                print(f"🔍 处理第 {i+1} 行: '{line}' -> 概念='{concept}', 权重={model_weight}")
-
-                if concept and len(concept) > 0:
-                    # 优先使用模型给出的真实语义强度；缺失时才回退到按名次递减
-                    if model_weight is not None and 0 < model_weight <= 1.0:
-                        weight = model_weight
-                    else:
-                        weight = max(0.95 - (i * 0.05), 0.3)
-
-                    concepts.append({
-                        "name": concept,
-                        "weight": round(weight, 3),
-                        "weight_source": "model" if model_weight is not None else "rank",
-                        "total_path_weight": 1.0,
-                        "weighted_influence": 1.0,
-                        "individual_influences": [1.0],
-                        "full_semantic_path": [{"concept": parent_concept, "weight": 1.0}]
-                    })
-            
+            path = [{"concept": parent_concept, "weight": 1.0}]
+            concepts = self._parse_concepts(content, target_count, path)
             if not concepts:
                 print(f"❌ 没有生成任何概念，原始响应: {content}")
                 raise ValueError(f"No concepts generated from API response: {content}")
-            
             print(f"✅ 成功生成 {len(concepts)} 个概念: {[c['name'] for c in concepts]}")
             return concepts
-            
         except Exception as e:
             print(f"❌ API调用失败: {type(e).__name__}: {e}")
-            print(f"🔍 错误详情: {str(e)}")
             # 直接抛出异常，不使用备用数据
             raise e
+
+    def _chat(self, system_prompt: str, user_prompt: str) -> str:
+        """统一的 API 调用，含网关参数三级降级。返回 content 文本。
+        该网关把 gpt-5 系列转发到 Responses API，只接受 max_completion_tokens，
+        拒绝旧 SDK 默认的 max_tokens；逐级降级保证不同网关都能跑通。"""
+        base_args = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.9,
+            "timeout": 30,
+        }
+        last_err = None
+        for extra in ({"max_completion_tokens": 800}, {"max_tokens": 800}, {}):
+            try:
+                resp = openai.ChatCompletion.create(**base_args, **extra)
+                return resp.choices[0].message.content.strip()
+            except Exception as call_err:
+                last_err = call_err
+                msg = str(call_err).lower()
+                if "token" in msg or "unsupported parameter" in msg or "unexpected" in msg:
+                    print(f"⚠️  参数不兼容，降级重试: {call_err}")
+                    continue
+                raise
+        raise last_err
+
+    def _parse_concepts(self, content: str, target_count: int, path: list) -> List[Dict[str, Any]]:
+        """解析 '概念|权重' 文本为 concept dict 列表。"""
+        concepts = []
+        lines = [l for l in content.split("\n") if l.strip()]
+        for i, line in enumerate(lines[:target_count]):
+            raw = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
+            concept, model_weight = raw, None
+            if '|' in raw:
+                parts = raw.split('|')
+                concept = parts[0].strip()
+                try:
+                    model_weight = float(re.sub(r'[^0-9.]', '', parts[1]))
+                except (ValueError, IndexError):
+                    model_weight = None
+            concept = concept.strip().strip('"“”\'')
+            if not concept:
+                continue
+            if model_weight is not None and 0 < model_weight <= 1.0:
+                weight, src = model_weight, "model"
+            else:
+                weight, src = max(0.95 - (i * 0.05), 0.3), "rank"
+            concepts.append({
+                "name": concept, "weight": round(weight, 3), "weight_source": src,
+                "total_path_weight": 1.0, "weighted_influence": 1.0,
+                "individual_influences": [1.0], "full_semantic_path": path,
+            })
+        return concepts
+
+    def generate_intersection_concepts(self, concept_a: str, concept_b: str,
+                                       target_count: int = 8) -> List[Dict[str, Any]]:
+        """双概念交集涌现：找同时活在两个概念里的意外第三者。"""
+        system_prompt = f"""你是一位资深创意总监。给你两个概念，你要找出 {target_count} 个「**同时活在这两个概念交叉处**」的意外形象。
+
+铁律：
+1. 每个结果必须**同时咬住两个概念**——既有第一个的气质，又有第二个的气质，缺一不可。只沾一个的直接淘汰。
+2. **优先输出神话、文化、历史、现实中已经存在的独立形象**——它本身就是一个大家能认出的名字或事物，恰好同时满足两个概念。例如「龙 × 少女」应优先给出：美杜莎、哪吒、小龙女、玛琳菲森、九头蛇、娜迦；而不是「龙女祭司」「驯龙歌姬」这种把两个词拼起来新造的合成词。
+3. 至少前 {max(target_count // 2, 3)} 个必须是这种「已存在的独立形象」。剩下的名额，才允许出现有质感、有画面的合成意象。
+4. 追求「大多数人第一反应想不到、但一说就拍案叫绝」的第三者。
+5. 每个简洁（不超过10个字），能被创意人直接拿去用。
+
+权重 0.00–1.00 = 这个第三者的「惊喜度 × 可用性」，越意外又越精准越高。已存在的独立形象通常应比合成词权重更高。
+
+输出格式：严格每行一个，竖线分隔，不要编号、不要解释：
+概念|权重
+例如（龙 × 少女）：
+美杜莎|0.93
+小龙女|0.88
+哪吒|0.85
+玛琳菲森|0.82
+..."""
+        user_prompt = f"两个概念：{concept_a}、{concept_b}"
+        print(f"🔀 交集涌现: {concept_a} × {concept_b}")
+        content = self._chat(system_prompt, user_prompt)
+        print(f"📝 交集响应: {content}")
+        path = [{"concept": concept_a, "weight": 1.0}, {"concept": concept_b, "weight": 1.0}]
+        concepts = self._parse_concepts(content, target_count, path)
+        if not concepts:
+            raise ValueError(f"No intersection concepts generated: {content}")
+        print(f"✅ 交集生成 {len(concepts)} 个: {[c['name'] for c in concepts]}")
+        return concepts
 
 # 初始化扩展器
 try:
@@ -196,6 +208,30 @@ class handler(BaseHTTPRequestHandler):
             current_concept = data.get('current_concept', '')
             semantic_path = data.get('semantic_path', [])
             target_count = data.get('target_count', 8)
+            concept_pair = data.get('concept_pair', [])
+
+            # 交集涌现分支：给两个概念，求它们之间的意外第三者
+            if concept_pair and len(concept_pair) == 2:
+                print(f"🔀 交集请求: {concept_pair}")
+                concepts = gat_expander.generate_intersection_concepts(
+                    concept_pair[0], concept_pair[1], target_count)
+                source_path = [{"concept": concept_pair[0], "weight": 1.0},
+                               {"concept": concept_pair[1], "weight": 1.0}]
+                response = {
+                    "success": True,
+                    "data": {
+                        "concepts": concepts,
+                        "method": "Intersection Emergence",
+                        "source_path": source_path,
+                        "expansion_level": 1
+                    }
+                }
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
+                return
 
             if not current_concept:
                 self.send_response(400)
@@ -204,7 +240,7 @@ class handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "success": False,
-                    "error": "Missing 'current_concept' parameter"
+                    "error": "Missing 'current_concept' or 'concept_pair' parameter"
                 }, ensure_ascii=False).encode('utf-8'))
                 return
 

@@ -911,6 +911,11 @@
             svgContainer: null, // SVG容器引用
             nodesGroup: null, // 节点组引用
             linksGroup: null, // 连线组引用
+            // 增量渲染需要的持久化实例（避免每次展开都重建、导致视角跳转）
+            svg: null,           // SVG 根元素 (D3 selection)
+            g: null,             // 主 g 容器
+            zoom: null,          // zoom behavior 实例
+            dragBehavior: null,  // drag behavior 实例
             // 🎯 聚光灯效应状态管理
             focusSystem: {
                 activeExpansionPath: null, // 当前活跃的扩展路径
@@ -973,121 +978,138 @@
                 renderWordCloud();
                 return;
             }
-            
-            // 💡 D3最佳实践：使用.nodes()更新而不是重新创建
+
+            // 🎯 关键：临时固定所有老节点，让力模拟只推动新节点找位置，老节点/视角不动
+            const newIds = new Set(newNodes.map(n => n.id));
+            const pinnedNodes = [];
+            wordCloudData.nodes.forEach(n => {
+                if (!newIds.has(n.id) && n.fx == null && n.fy == null) {
+                    n.fx = n.x;
+                    n.fy = n.y;
+                    pinnedNodes.push(n); // 记录被我们临时固定的节点，稍后释放
+                }
+            });
+
+            // 💡 D3最佳实践：用 .nodes() 更新节点集合，而非重建 simulation
             wordCloudData.simulation
                 .nodes(wordCloudData.nodes)
-                .alpha(0.3) // 适度重启动能
+                .alpha(0.3) // 适度重启动能，仅新节点响应（老节点已被 fx/fy 固定）
                 .restart();
-                
-            console.log(`🔧 增量更新simulation：新增${newNodes.length}个节点`);
+
+            // 复用全量渲染的停止策略：一段时间后固定并释放老节点约束
+            clearTimeout(wordCloudData._simStopTimer);
+            wordCloudData._simStopTimer = setTimeout(() => {
+                wordCloudData.simulation.stop();
+                // 释放临时固定的老节点（仅释放我们固定的，不动用户手动拖拽固定的）
+                pinnedNodes.forEach(n => { n.fx = null; n.fy = null; });
+            }, 1500);
+
+            console.log(`🔧 增量更新simulation：新增${newNodes.length}个节点，临时固定${pinnedNodes.length}个老节点`);
         }
         
-        // 🎨 增量视觉更新：D3 Enter/Update/Exit模式
+        // 🎨 增量视觉更新：D3 Enter/Update/Exit模式（与 renderWordCloud 的节点/连线创建逻辑保持一致）
         function updateVisualization() {
             if (!wordCloudData.nodesGroup || !wordCloudData.linksGroup) {
                 console.warn('⚠️ SVG组未初始化，无法增量更新');
                 return;
             }
-            
-            // 更新连线
-            const links = wordCloudData.linksGroup
-                .selectAll('.semantic-link')
-                .data(wordCloudData.semanticLinks, d => `${d.source.id}-${d.target.id}`);
-                
-            // 新连线进入
-            const linksEnter = links.enter()
+
+            // ===== 用户连线 (.word-link) =====
+            const userLinks = wordCloudData.linksGroup
+                .selectAll('.word-link')
+                .data(wordCloudData.links, d => d.id || `${d.source.id}-${d.target.id}`);
+            userLinks.enter()
                 .append('line')
-                .attr('class', 'semantic-link')
-                .style('stroke', d => d.type === 'solid' ? '#4facfe' : '#a0a0a0')
-                .style('stroke-width', d => d.type === 'solid' ? 2 : 1)
-                .style('stroke-dasharray', d => d.type === 'dashed' ? '8,4' : 'none')
-                .style('opacity', 0);
-                
-            // 连线更新 + 动画
-            links.merge(linksEnter)
-                .transition().duration(300)
-                .style('opacity', d => d.type === 'solid' ? 0.8 : 0.5)
-                .attr('x1', d => d.source.x)
-                .attr('y1', d => d.source.y)
-                .attr('x2', d => d.target.x)
-                .attr('y2', d => d.target.y);
-                
-            // 移除旧连线
-            links.exit()
+                .attr('class', 'word-link')
+                .style('stroke', '#007AFF')
+                .style('stroke-width', d => Math.max(2, d.weight * 3))
+                .style('stroke-opacity', 0.8)
+                .style('filter', 'drop-shadow(0 1px 3px rgba(0,122,255,0.3))')
+                .on('click', handleLinkClick);
+            userLinks.exit().remove();
+
+            // ===== 语义连线 (.semantic-link) —— 用 path，与全量渲染一致，tick 会更新其 d 属性 =====
+            const semanticLinks = wordCloudData.linksGroup
+                .selectAll('.semantic-link')
+                .data(wordCloudData.semanticLinks, d => d.id || `${d.source.id}-${d.target.id}`);
+            semanticLinks.enter()
+                .append('path')
+                .attr('class', d => `semantic-link ${d.type}`)
+                .attr('fill', 'none')
+                .attr('fill-rule', 'nonzero')
+                .style('shape-rendering', 'geometricPrecision');
+            semanticLinks.exit()
                 .transition().duration(200)
                 .style('opacity', 0)
                 .remove();
-            
-            // 更新节点
+
+            // ===== 节点 (.word-group) =====
             const nodeGroups = wordCloudData.nodesGroup
                 .selectAll('.word-group')
                 .data(wordCloudData.nodes, d => d.id);
-            
+
             // 新节点进入
             const nodeGroupsEnter = nodeGroups.enter()
                 .append('g')
                 .attr('class', 'word-group')
-                .style('opacity', 0);
-            
-            // 添加圆形背景到新节点
+                .style('opacity', 0)
+                // 新节点从父节点位置或自身初始坐标出现，避免从 (0,0) 飞入
+                .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`);
+
+            // 圆形背景（含点击/双击事件，与全量渲染一致绑在 circle 上）
             nodeGroupsEnter.append('circle')
                 .attr('class', d => `word-node ${d.type}`)
                 .attr('r', getNodeRadius)
                 .style('fill', d => d.type === 'fuzzy' ? getDynamicMorandiColor(d) : null)
-                .style('opacity', d => d.type === 'core' ? 1 : Math.max(0.4, 0.4 + d.weight * 0.6));
-            
-            // 添加文字到新节点
+                .style('opacity', d => d.type === 'core' ? 1 : Math.max(0.4, 0.4 + d.weight * 0.6))
+                .on('click', handleNodeClick)
+                .on('dblclick', handleNodeDoubleClick);
+
+            // 文字
             nodeGroupsEnter.append('text')
                 .attr('class', 'word-text')
                 .each(function(d) {
                     const radius = getNodeRadius(d);
                     const textFit = smartTextFit(d.name, radius);
                     const baseFontSize = Math.min(radius * 0.45, 13);
-                    
+
                     d3.select(this)
                         .style('font-size', `${baseFontSize * textFit.scale}px`)
                         .text(textFit.text)
                         .append('title')
                         .text(d.name);
                 });
-            
-            // 🔡 为新节点添加扩展按钮
+
+            // 扩展按钮
             const expandBtns = nodeGroupsEnter.append('g')
                 .attr('class', 'expand-group')
                 .style('opacity', 0.85);
-                
             expandBtns.append('circle')
                 .attr('class', 'expand-btn')
                 .attr('r', 7)
                 .attr('cx', d => getNodeRadius(d) * 0.7)
                 .attr('cy', d => -getNodeRadius(d) * 0.7)
                 .on('click', handleExpandClick);
-                
             expandBtns.append('text')
                 .attr('class', 'expand-icon')
                 .attr('x', d => getNodeRadius(d) * 0.7)
                 .attr('y', d => -getNodeRadius(d) * 0.7)
                 .text('+');
-            
-            // 节点更新 + 动画进入
-            const allNodeGroups = nodeGroups.merge(nodeGroupsEnter);
-            allNodeGroups
+
+            // 绑定拖拽到新节点（复用全局 dragBehavior 实例）
+            nodeGroupsEnter.call(wordCloudData.dragBehavior);
+
+            // 新节点淡入动画
+            nodeGroupsEnter
                 .transition().duration(500)
-                .style('opacity', 1)
-                .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`);
-                
+                .style('opacity', 1);
+
             // 移除旧节点
             nodeGroups.exit()
                 .transition().duration(300)
                 .style('opacity', 0)
                 .remove();
-                
-            // 绑定事件到新节点
-            nodeGroupsEnter
-                .on('click', handleNodeClick)
-                .on('dblclick', handleNodeDoubleClick);
-                
+
             console.log('🎨 增量视觉更新完成');
         }
         
@@ -1429,17 +1451,18 @@ ${semanticPath.map((word, index) => {
                 // 解析GAT API返回的语义结构
                 const concepts = [];
                 
-                // 处理GAT生成的概念
+                // 处理后端生成的概念
                 if (data.data.concepts) {
                     data.data.concepts.forEach((item, index) => {
+                        // 权重兜底：后端异常时可能缺失/非数字，统一 clamp 到 [0,1]，防下游 toFixed 崩溃
+                        const w = Number.isFinite(item.weight) ? Math.max(0, Math.min(1, item.weight)) : 0.5;
                         concepts.push({
                             word: item.name,
-                            weight: item.weight,  // 使用GAT计算的真实权重
+                            weight: w,
                             relation: 'gat_semantic',
                             source: 'gat_path_api',
                             originalPrompt: coreWord,
                             pathWeight: item.total_path_weight,
-                            attentionFactor: item.path_attention,
                             fullPath: item.full_semantic_path
                         });
                     });
@@ -1468,7 +1491,8 @@ ${semanticPath.map((word, index) => {
                 return;
             }
             
-            const coreWords = coreWordsInput.split(',').map(w => w.trim()).filter(w => w);
+            // 核心词去重：核心节点 id 直接用词名，重复会导致 D3 data-join key 碰撞
+            const coreWords = [...new Set(coreWordsInput.split(',').map(w => w.trim()).filter(w => w))];
             
             // 清空现有数据
             wordCloudData.nodes = [];
@@ -1588,15 +1612,20 @@ ${semanticPath.map((word, index) => {
             }
         }
         
-        // 渲染词云 - 优化版本避免抖动
-        function renderWordCloud() {
+        // 🚀 初始化可视化环境（仅首次调用，后续复用避免视角跳转）
+        function initializeVisualization() {
             const container = document.getElementById('wordcloudContainer');
+            if (!container) {
+                console.error('❌ 容器元素未找到');
+                return;
+            }
+
             const width = container.clientWidth;
             const height = container.clientHeight;
-            
-            // 清空容器
+
+            // 清空容器（仅初始化时做一次）
             d3.select(container).selectAll('*').remove();
-            
+
             // 创建SVG with 图谱交互功能
             // 🚀 创建无限大的SVG画布，彻底消除边界
             const svg = d3.select(container)
@@ -1605,22 +1634,22 @@ ${semanticPath.map((word, index) => {
                 .style('height', '100vh') // ✨ 使用视窗全高
                 .style('overflow', 'visible') // ✨ 允许元素超出边界
                 .attr('viewBox', `${-width*2} ${-height*2} ${width*4} ${height*4}`); // ✨ 4倍大的视图区域
-                
+
             const g = svg.append('g');
-            
+
             // 添加连线组和节点组
             const linksGroup = g.append('g').attr('class', 'links-group');
             const nodesGroup = g.append('g').attr('class', 'nodes-group');
-            
+
             // 添加缩放和平移功能
             const zoom = d3.zoom()
                 .scaleExtent([0.3, 3]) // 缩放范围：30%到300%
                 .on('zoom', (event) => {
                     g.attr('transform', event.transform);
                 });
-            
+
             svg.call(zoom);
-            
+
             // 双击重置视图
             svg.on('dblclick.zoom', null); // 禁用默认双击缩放
             svg.on('dblclick', () => {
@@ -1629,7 +1658,7 @@ ${semanticPath.map((word, index) => {
                     .call(zoom.transform, d3.zoomIdentity);
                 updateDebugInfo('🔄 视图已重置到初始位置和缩放级别');
             });
-            
+
             // 🎯 单击空白区域清除聚光灯效应
             svg.on('click', (event) => {
                 // 确保点击的是SVG背景，不是节点或链接
@@ -1639,14 +1668,127 @@ ${semanticPath.map((word, index) => {
                     updateDebugInfo('🎯 已清除聚光灯效应，恢复所有元素正常显示');
                 }
             });
-            
+
+            // 🖱️ 优雅拖拽功能 - 智能识别拖拽意图
+            let dragStartTime = 0;
+            let isDragging = false;
+            let longPressTimer = null;
+
+            // 统一的 tick 更新逻辑：simulation.on('tick')、drag、增量渲染都调这个，确保连线实时跟随
+            const ticked = () => {
+                // 更新用户连线位置
+                wordCloudData.linksGroup.selectAll('.word-link')
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                // 更新语义连线（贝塞尔曲线）
+                wordCloudData.linksGroup.selectAll('.semantic-link')
+                    .attr('d', (d, i) => {
+                        const dx = d.target.x - d.source.x;
+                        const dy = d.target.y - d.source.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        // 距离太近时直接使用直线，避免渲染问题
+                        if (distance < 60) {
+                            return `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`;
+                        }
+
+                        const midX = (d.source.x + d.target.x) / 2;
+                        const midY = (d.source.y + d.target.y) / 2;
+
+                        // 计算控制点的偏移，交替方向避免重叠
+                        const offset = 25 * (i % 2 === 0 ? 1 : -1);
+                        const perpX = -dy / distance * offset;
+                        const perpY = dx / distance * offset;
+
+                        const controlX = midX + perpX;
+                        const controlY = midY + perpY;
+
+                        // 使用二次贝塞尔曲线
+                        return `M${d.source.x},${d.source.y}Q${controlX},${controlY} ${d.target.x},${d.target.y}`;
+                    });
+
+                // 更新节点位置
+                wordCloudData.nodesGroup.selectAll('.word-group')
+                    .attr('transform', d => `translate(${d.x}, ${d.y})`);
+            };
+
+            const dragBehavior = d3.drag()
+                .on('start', function(event, d) {
+                    dragStartTime = Date.now();
+                    isDragging = false;
+
+                    // 长按检测 - 200ms后激活拖拽（更快响应）
+                    longPressTimer = setTimeout(() => {
+                        isDragging = true;
+                        d3.select(this).classed('dragging', true);
+                        updateDebugInfo(`🖱️ 开始拖拽节点: ${d.name}`);
+
+                        // 固定节点位置，禁用力模拟对此节点的影响
+                        d.fx = d.x;
+                        d.fy = d.y;
+
+                        // 重启模拟以更新约束
+                        if (wordCloudData.simulation) {
+                            wordCloudData.simulation.alpha(0.3).restart();
+                        }
+                    }, 200);
+                })
+                .on('drag', function(event, d) {
+                    if (isDragging) {
+                        // 更新固定位置
+                        d.fx = event.x;
+                        d.fy = event.y;
+
+                        // 🔥 实时更新节点位置和相关连线
+                        d.x = d.fx;
+                        d.y = d.fy;
+
+                        // 调用统一 tick 更新：节点组 + 所有连线实时跟随
+                        ticked();
+                    }
+                })
+                .on('end', function(event, d) {
+                    // 清除长按计时器
+                    if (longPressTimer) {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    }
+
+                    // 检测是否为快速点击（非拖拽）
+                    const clickDuration = Date.now() - dragStartTime;
+
+                    if (!isDragging && clickDuration < 200) {
+                        // 快速点击 - 触发节点扩展
+                        if (d.type !== 'core') {
+                            expandNode(d);
+                        }
+                    }
+
+                    if (isDragging) {
+                        d3.select(this).classed('dragging', false);
+                        updateDebugInfo(`✅ 拖拽完成: ${d.name}`);
+
+                        // 释放固定约束，恢复力模拟
+                        d.fx = null;
+                        d.fy = null;
+
+                        if (wordCloudData.simulation) {
+                            wordCloudData.simulation.alphaTarget(0);
+                        }
+                    }
+
+                    isDragging = false;
+                });
+
             // 🌿 有机圆形力模拟 - 自然分布不受矩形约束
             const centerX = width / 2;
             const centerY = height / 2;
-            // 🚀 彻底消除边界：无限大的可用空间
-            const maxRadius = Infinity; // ✨ 无限大的边界
-            
-            const simulation = d3.forceSimulation(wordCloudData.nodes)
+
+            // 只创建力模拟并配置力/tick，不在此启动——节点数据与 restart 由 renderWordCloud 在 DOM 渲染后统一驱动
+            const simulation = d3.forceSimulation()
                 .force('charge', d3.forceManyBody()
                     .strength(-150) // 🎯 减少排斥力，让节点更紧凑
                 )
@@ -1656,13 +1798,44 @@ ${semanticPath.map((word, index) => {
                     .strength(0.9) // 🎯 增强碰撞力度，强制分离
                 )
                 // 🚀 彻底移除所有边界约束，节点可以无限扩展
-                // .force('boundary', ...) ✨ 不再需要任何边界限制
-                .alphaDecay(0.03);
-            
+                .alphaDecay(0.03)
+                .stop(); // 先停住，等 DOM 就绪再由 renderWordCloud 启动
+
+            // 力模拟更新 - tick回调
+            simulation.on('tick', ticked);
+
+            // 监听模拟结束
+            simulation.on('end', () => {
+                updateDebugInfo('🎯 布局已稳定，节点已停止移动，可以开始点击交互');
+                console.log('🎯 力导向布局已完全停止');
+            });
+
+            // 存储到 wordCloudData 全局实例
+            wordCloudData.svg = svg;
+            wordCloudData.g = g;
+            wordCloudData.zoom = zoom;
+            wordCloudData.dragBehavior = dragBehavior;
+            wordCloudData.linksGroup = linksGroup;
+            wordCloudData.nodesGroup = nodesGroup;
             wordCloudData.simulation = simulation;
-            
+            wordCloudData.ticked = ticked; // 暴露给增量渲染，用于不移动节点地刷新连线坐标
+
+            console.log('✅ 可视化环境初始化完成');
+        }
+
+        // 渲染词云 - 优化版本避免抖动
+        function renderWordCloud() {
+            // 首次调用时初始化 SVG/zoom/simulation/drag（后续复用，避免视角跳转）
+            if (!wordCloudData.svg) {
+                initializeVisualization();
+            }
+
+            // 清空旧节点和连线 DOM（保留 SVG/zoom，只重绘节点/连线）
+            wordCloudData.nodesGroup.selectAll('*').remove();
+            wordCloudData.linksGroup.selectAll('*').remove();
+
             // 🎨 渐变定义 - 连线视觉层次
-            const defs = svg.select('defs').empty() ? svg.append('defs') : svg.select('defs');
+            const defs = wordCloudData.svg.select('defs').empty() ? wordCloudData.svg.append('defs') : wordCloudData.svg.select('defs');
             
             // 清除旧的渐变
             defs.selectAll('.link-gradient').remove();
@@ -1696,7 +1869,7 @@ ${semanticPath.map((word, index) => {
             });
             
             // 渲染用户创建的连线 - 参考图配色方案
-            const links = linksGroup.selectAll('.word-link')
+            const links = wordCloudData.linksGroup.selectAll('.word-link')
                 .data(wordCloudData.links)
                 .enter().append('line')
                 .attr('class', 'word-link')
@@ -1705,98 +1878,25 @@ ${semanticPath.map((word, index) => {
                 .style('stroke-opacity', 0.8)
                 .style('filter', 'drop-shadow(0 1px 3px rgba(0,122,255,0.3))') // 🎨 添加蓝色阴影
                 .on('click', handleLinkClick);
-            
+
             // ✅ 重新启用语义连线渲染，修复Safari渲染bug
-            const semanticLinks = linksGroup.selectAll('.semantic-link')
+            const semanticLinks = wordCloudData.linksGroup.selectAll('.semantic-link')
                 .data(wordCloudData.semanticLinks)
                 .enter().append('path')
                 .attr('class', d => `semantic-link ${d.type}`)
                 .attr('fill', 'none') // ✨ 关键修复：禁用fill避免黑影
                 .attr('fill-rule', 'nonzero') // ✨ Safari修复：使用nonzero规则
                 .style('shape-rendering', 'geometricPrecision'); // ✨ 提高渲染精度
-            
+
             // 创建节点组
-            const nodeGroups = nodesGroup.selectAll('.word-group')
+            const nodeGroups = wordCloudData.nodesGroup.selectAll('.word-group')
                 .data(wordCloudData.nodes)
                 .enter().append('g')
                 .attr('class', 'word-group')
                 .style('opacity', 0);
-            
-            // 🖱️ 优雅拖拽功能 - 智能识别拖拽意图
-            let dragStartTime = 0;
-            let isDragging = false;
-            let longPressTimer = null;
-            
-            const dragBehavior = d3.drag()
-                .on('start', function(event, d) {
-                    dragStartTime = Date.now();
-                    isDragging = false;
-                    
-                    // 长按检测 - 200ms后激活拖拽（更快响应）
-                    longPressTimer = setTimeout(() => {
-                        isDragging = true;
-                        d3.select(this).classed('dragging', true);
-                        updateDebugInfo(`🖱️ 开始拖拽节点: ${d.name}`);
-                        
-                        // 固定节点位置，禁用力模拟对此节点的影响
-                        d.fx = d.x;
-                        d.fy = d.y;
-                        
-                        // 重启模拟以更新约束
-                        if (wordCloudData.simulation) {
-                            wordCloudData.simulation.alpha(0.3).restart();
-                        }
-                    }, 200);
-                })
-                .on('drag', function(event, d) {
-                    if (isDragging) {
-                        // 更新固定位置
-                        d.fx = event.x;
-                        d.fy = event.y;
-                        
-                        // 🔥 实时更新节点位置和相关连线（移除矩形夹逼）
-                        d.x = d.fx;
-                        d.y = d.fy;
-                        
-                        // 更新节点组位置
-                        d3.select(this).attr('transform', `translate(${d.x}, ${d.y})`);
-                    }
-                })
-                .on('end', function(event, d) {
-                    // 清除长按计时器
-                    if (longPressTimer) {
-                        clearTimeout(longPressTimer);
-                        longPressTimer = null;
-                    }
-                    
-                    // 检测是否为快速点击（非拖拽）
-                    const clickDuration = Date.now() - dragStartTime;
-                    
-                    if (!isDragging && clickDuration < 200) {
-                        // 快速点击 - 触发节点扩展
-                        if (d.type !== 'core') {
-                            expandNode(d);
-                        }
-                    }
-                    
-                    if (isDragging) {
-                        d3.select(this).classed('dragging', false);
-                        updateDebugInfo(`✅ 拖拽完成: ${d.name}`);
-                        
-                        // 释放固定约束，恢复力模拟
-                        d.fx = null;
-                        d.fy = null;
-                        
-                        if (wordCloudData.simulation) {
-                            wordCloudData.simulation.alphaTarget(0);
-                        }
-                    }
-                    
-                    isDragging = false;
-                });
-            
+
             // 绑定拖拽行为到节点组
-            nodeGroups.call(dragBehavior);
+            nodeGroups.call(wordCloudData.dragBehavior);
             
             // 添加圆形背景
             nodeGroups.append('circle')
@@ -1845,62 +1945,19 @@ ${semanticPath.map((word, index) => {
                 .delay((d, i) => i * 50)
                 .duration(800)
                 .style('opacity', 1);
-            
-            // 力模拟更新 - 添加边界约束
-            simulation.on('tick', () => {
-                // 去除矩形边界夹逼，改由碰撞力与轻柔居中力维持形态
-                
-                // 更新用户连线位置
-                links
-                    .attr('x1', d => d.source.x)
-                    .attr('y1', d => d.source.y)
-                    .attr('x2', d => d.target.x)
-                    .attr('y2', d => d.target.y);
-                
-                // ✨ Safari弧形路径渲染bug修复：使用贝塞尔曲线替代弧形
-                semanticLinks
-                    .attr('d', (d, i) => {
-                        const dx = d.target.x - d.source.x;
-                        const dy = d.target.y - d.source.y;
-                        const distance = Math.sqrt(dx * dx + dy * dy);
-                        
-                        // 距离太近时直接使用直线，避免渲染问题
-                        if (distance < 60) {
-                            return `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`;
-                        }
-                        
-                        // ✨ 使用贝塞尔曲线替代SVG弧形，避免Safari渲染bug
-                        const midX = (d.source.x + d.target.x) / 2;
-                        const midY = (d.source.y + d.target.y) / 2;
-                        
-                        // 计算控制点的偏移，交替方向避免重叠
-                        const offset = 25 * (i % 2 === 0 ? 1 : -1);
-                        const perpX = -dy / distance * offset;
-                        const perpY = dx / distance * offset;
-                        
-                        const controlX = midX + perpX;
-                        const controlY = midY + perpY;
-                        
-                        // 使用二次贝塞尔曲线，单一路径避免重叠
-                        return `M${d.source.x},${d.source.y}Q${controlX},${controlY} ${d.target.x},${d.target.y}`;
-                    });
-                    
-                // 更新节点位置
-                nodeGroups.attr('transform', d => `translate(${d.x}, ${d.y})`);
-            });
-            
-            // 监听模拟结束，确保完全停止
-            simulation.on('end', () => {
-                updateDebugInfo('🎯 布局已稳定，节点已停止移动，可以开始点击交互');
-                console.log('🎯 力导向布局已完全停止');
-            });
-            
-            // 2秒后强制停止，确保用户可以快速交互
+
+            // DOM 节点渲染完成，现在启动力模拟（喂入当前节点数据、重启动画）
+            wordCloudData.simulation
+                .nodes(wordCloudData.nodes)
+                .alpha(1) // 重置能量，从头开始模拟
+                .restart();
+
+            // 2秒后强制停止，确保用户可以快速交互（避免长时间抖动）
             setTimeout(() => {
-                simulation.stop();
+                wordCloudData.simulation.stop();
                 updateDebugInfo('⏰ 强制停止布局动画，节点现已完全固定');
             }, 2000);
-            
+
             updateStats();
             updateDebugInfo('🎨 词云渲染完成！可以开始交互测试');
         }
@@ -1938,7 +1995,10 @@ ${semanticPath.map((word, index) => {
         function getNodeRadius(d) {
             const baseRadius = 16;
             const maxRadius = 36;
-            return d.type === 'core' ? maxRadius : baseRadius + d.weight * (maxRadius - baseRadius);
+            if (d.type === 'core') return maxRadius;
+            // weight 可能缺失/NaN/越界，clamp 到 [0,1]，兜底 0.5，防半径异常
+            const w = Number.isFinite(d.weight) ? Math.max(0, Math.min(1, d.weight)) : 0.5;
+            return baseRadius + w * (maxRadius - baseRadius);
         }
         
         // 节点点击事件 - 增强调试 + 连线功能
@@ -2007,7 +2067,9 @@ ${semanticPath.map((word, index) => {
             });
             
             updateDebugInfo(`✅ 成功创建连线: ${sourceNode.name} ↔ ${targetNode.name}`);
-            renderWordCloud(); // 重新渲染以显示新连线
+            // 🌱 增量：只画出新连线，不重绘整图、不移动任何节点（直接刷新连线坐标）
+            updateVisualization();
+            if (wordCloudData.ticked) wordCloudData.ticked();
         }
         
         // 连线点击事件
@@ -2110,6 +2172,7 @@ ${semanticPath.map((word, index) => {
                 }
                 
                 // 添加新节点，位置靠近父节点，使用智能防重叠算法
+                const newlyAddedNodes = []; // 收集本次新增节点，用于增量渲染
                 newConcepts.forEach((concept, index) => {
                     // 🎯 优化角度分布：避免重叠，确保均匀分布
                     const angle = (index / newConcepts.length) * 2 * Math.PI + Math.random() * 0.3;
@@ -2164,7 +2227,8 @@ ${semanticPath.map((word, index) => {
                     };
                     
                     wordCloudData.nodes.push(newNode);
-                    
+                    newlyAddedNodes.push(newNode); // 记录新增节点
+
                     // 用户主动扩展 - 创建虚线（新AI建议）
                     createSemanticLink(node, newNode, 'dashed');
                 });
@@ -2177,8 +2241,9 @@ ${semanticPath.map((word, index) => {
                 
                 updateDebugInfo(`✅ 路径扩展完成！从 ${(node.semanticPath || [node.name]).join('→')} 扩展了 ${newConcepts.length} 个概念:\n${pathInfo}`);
                 
-                // 重新渲染
-                renderWordCloud();
+                // 🌱 增量渲染：只添加新节点，保持视角/老节点不动（不再全量重绘）
+                updateSimulationWithNewNodes(newlyAddedNodes);
+                updateVisualization();
                 updateCoreNodesList();
                 
                 // 🌊 触发层级淡化机制 - 让早期虚线变浅
@@ -2271,7 +2336,7 @@ ${semanticPath.map((word, index) => {
                 if (validPosition) break;
             }
             
-            wordCloudData.nodes.push({
+            const addedCoreNode = {
                 id: newWord,
                 name: newWord,
                 type: 'core',
@@ -2281,15 +2346,17 @@ ${semanticPath.map((word, index) => {
                 pathDepth: 1,
                 x: x,
                 y: y
-            });
-            
+            };
+            wordCloudData.nodes.push(addedCoreNode);
+
             // 清空输入框
             newWordInput.value = '';
-            
+
             updateDebugInfo(`✅ 成功添加新根节点: ${newWord}`);
-            
-            // 重新渲染词云
-            renderWordCloud();
+
+            // 🌱 增量：新根节点长出来，保持视角/老节点不动
+            updateSimulationWithNewNodes([addedCoreNode]);
+            updateVisualization();
             updateStats();
             updateCoreNodesList();
         }

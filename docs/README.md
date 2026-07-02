@@ -2,7 +2,7 @@
 
 **Between two concepts, find the third that doesn't yet exist.**
 
-> **GAT-Powered Semantic Network Exploration** - From fuzzy intuition to precise discovery
+> **LLM-Powered Semantic Network Exploration** - From fuzzy intuition to precise discovery
 
 ---
 
@@ -134,31 +134,38 @@ These fuzzy neighbors are where true inspiration lives.
 
 ---
 
-## 🛠️ GAT Architecture
+## 🛠️ Architecture
+
+> **Note:** This project uses **LLM prompt engineering** for semantic expansion and a
+> **D3.js force-directed graph** for visualization. Concept "weights" are the relatedness
+> scores the language model self-assigns (0.00–1.00), not the output of a trained neural
+> network. There is no PyTorch / Graph Attention Network in the codebase — earlier docs
+> called it "GAT" as a metaphor, which was misleading and has been corrected.
 
 ### Semantic Understanding Layer
 ```python
-# OpenAI-based semantic embedding
+# LLM-based semantic expansion
 def generate_semantic_concepts(parent_concept, target_count=8):
-    # Leverage AI's "fuzzy understanding" capability
-    # Generate precise related terms from fuzzy concepts
+    # Prompt the model to produce related concepts across semantic dimensions,
+    # each with a self-assessed relatedness weight (1.0 = core, lower = more peripheral)
 ```
 
-### Attention Mechanism
+### Weight (relatedness) Layer
 ```python
-# Concept weight calculation
+# The model self-assigns a relatedness score per concept
 concept = {
     "name": "Related Concept",
-    "weight": 0.85,  # Attention weight
+    "weight": 0.85,          # model-assigned relatedness, 0..1
+    "weight_source": "model", # "model" = real; "rank" = order-based fallback
     "semantic_path": [{"concept": "Core Term", "weight": 1.0}]
 }
 ```
 
-### Graph Attention Network
+### Force-Directed Visualization
 ```javascript
-// D3.js force-directed graph + attention weights
+// D3.js force-directed graph; node size & repulsion scale with weight
 const simulation = d3.forceSimulation(nodes)
-    .force("attention", d3.forceManyBody().strength(d => d.weight * -300))
+    .force("charge", d3.forceManyBody().strength(d => d.weight * -300))
     .force("semantic", d3.forceLink(links).id(d => d.id))
 ```
 
@@ -167,10 +174,11 @@ const simulation = d3.forceSimulation(nodes)
 ## ✨ Core Features
 
 - 🧠 **Fuzzy Semantic Understanding** - AI's "fuzzy understanding," not exact matching
-- ⚡ **Attention Weights** - Concept importance visualized through weights
+- ⚡ **Relatedness Weights** - Concept relatedness visualized through model-assigned weights
 - 🔄 **Path Tracking** - Record complete journey from fuzzy to precise
 - 📊 **Dynamic Layout** - Weight-based force-directed graph layout
 - 🎯 **Spotlight Mode** - Focus on current exploration path
+
 
 ---
 
@@ -263,7 +271,7 @@ Sheena Ringo → Art → Visual Arts → Installation Art
 ## 🛠️ Tech Stack
 
 - **Semantic Understanding**: OpenAI GPT-3.5/4 + Custom Prompt Engineering
-- **Graph Attention**: D3.js Force-Directed Graph + Weight Calculation
+- **Visualization**: D3.js Force-Directed Graph + Weight Calculation
 - **Frontend**: HTML5 + CSS3 + JavaScript ES6+
 - **Backend**: Python + Vercel Serverless Functions
 - **Data Storage**: In-memory Cache + Semantic Path Recording

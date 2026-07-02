@@ -33,22 +33,10 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "Flask==2.2.5",
+        # 运行时真实依赖：仅 LLM 网关调用 + 环境变量加载。
+        # 历史上曾声明 torch/torch-geometric/transformers/fastapi 等，但代码从未使用，已移除。
         "openai==0.28.0",
-        "requests==2.31.0",
         "python-dotenv==1.0.0",
-        "fastapi==0.104.1",
-        "uvicorn[standard]==0.24.0",
-        "numpy==1.24.3",
-        "pandas==2.0.3",
-        "torch==2.0.1",
-        "torch-geometric==2.3.1",
-        "transformers==4.35.2",
-        "scikit-learn==1.3.0",
-        "aiohttp==3.8.6",
-        "sqlalchemy==2.0.23",
-        "psycopg2-binary==2.9.7",
-        "prometheus-client==0.17.1",
     ],
     extras_require={
         "dev": [

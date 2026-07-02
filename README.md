@@ -2,7 +2,7 @@
 
 **Between two concepts, find the third that doesn't yet exist.**
 
-> **GAT-Powered Semantic Network Exploration** - From fuzzy intuition to precise discovery
+> **LLM-Powered Semantic Network Exploration** - From fuzzy intuition to precise discovery
 
 ---
 
@@ -137,28 +137,20 @@ These fuzzy neighbors are where true inspiration lives.
 ## 🛠️ Technology Stack
 
 ### Backend (Python)
-- **Framework**: FastAPI (inspired by Creative-Writing migration)
-- **AI/ML**: OpenAI API, PyTorch (GAT Networks)
-- **Async**: asyncio for concurrent processing
-- **APIs**: RESTful endpoints for concept expansion
+- **Runtime**: Vercel Python Serverless Function (stdlib `http.server` handler, no heavy framework)
+- **AI/ML**: OpenAI-compatible LLM API (prompt-engineered semantic expansion; the model self-assigns each concept a 0–1 relatedness weight)
+- **APIs**: single `POST /api/path-expand` endpoint for concept expansion
 
 ### Frontend (JavaScript)
-- **Visualization**: D3.js for force-directed graphs and word clouds
-- **UI**: Vanilla JS with modern CSS
-- **Internationalization**: i18n support for multiple languages
+- **Visualization**: D3.js v7 force-directed graph + word cloud (incremental rendering — expanding a node grows new nodes without redrawing/re-zooming the whole graph)
+- **UI**: Vanilla JS with modern CSS, single self-contained `index.html`
+- **Internationalization**: built-in zh / en i18n
 - **Responsive**: Mobile-friendly design
 
 ### Infrastructure
-- **Deployment**: Vercel (serverless)
-- **Containerization**: Docker support (from Creative-Writing)
-- **Monitoring**: Basic logging and error handling
-- **Data Storage**: JSON-based concept databases
-
-### Key Components Migrated from Creative-Writing
-- **API Architecture**: FastAPI patterns for scalable backends
-- **Visualization Techniques**: Advanced D3.js implementations for cognitive state displays (adapted for word cloud weights)
-- **Deployment Configurations**: Docker and Kubernetes setups for production
-- **Knowledge Graph Concepts**: Graph-based semantic expansion algorithms
+- **Deployment**: Vercel (static frontend + Python serverless function, configured in `vercel.json`)
+- **Local dev**: `dev_server.py` serves the frontend and proxies `/api/path-expand` to the function handler
+- **Config**: API key & model via environment variables (`OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL`)
 
 ---
 
@@ -204,21 +196,17 @@ Space-Time → Dimension → 4D Space → Spacetime Curvature
 
 ```
 wordcloud2tester/
-├── backend/           # Python FastAPI backend
-│   ├── path-expand.py # Concept expansion logic
-│   ├── test.py       # API tests
-│   └── requirements.txt
-├── frontend/          # Web frontend
-│   ├── index.html    # Main page
-│   ├── src/          # JavaScript sources
-│   └── i18n-translations.js
-├── config/            # Configuration files
-│   └── vercel.json   # Vercel deployment config
-├── data/             # Data files and assets
-├── docs/             # Documentation
-│   ├── README.md     # Detailed docs
-│   └── DEPLOY_GUIDE.md
-└── README.md         # This file
+├── api/
+│   └── path-expand.py       # Vercel Python serverless function (LLM semantic expansion)
+├── frontend/
+│   ├── index.html           # Self-contained UI: D3 graph + all app JS
+│   └── i18n-translations.js  # zh / en strings
+├── dev_server.py            # Local dev server (serves frontend + proxies /api)
+├── vercel.json              # Vercel build & routing config
+├── requirements.txt         # Runtime deps (openai, python-dotenv)
+├── tests/                   # Engine smoke tests
+├── docs/                    # Detailed docs & deploy guide
+└── README.md                # This file
 ```
 
 ---
@@ -227,10 +215,9 @@ wordcloud2tester/
 
 ### Prerequisites
 - Python 3.8+
-- Node.js 16+ (for development)
-- OpenAI API key
+- An OpenAI-compatible API key
 
-### Installation
+### Installation & Local Run
 
 1. **Clone the repository**
    ```bash
@@ -238,28 +225,43 @@ wordcloud2tester/
    cd wordcloud2tester
    ```
 
-2. **Setup backend**
+2. **Install dependencies**
    ```bash
-   cd backend
+   python -m venv .venv && source .venv/bin/activate
    pip install -r requirements.txt
-   # Set your OpenAI API key
-   export OPENAI_API_KEY="your-key-here"
    ```
 
-3. **Run locally**
+3. **Configure the API** — create a `.env` file in the project root:
    ```bash
-   # Start backend
-   python path-expand.py
+   OPENAI_API_KEY=your-key-here
+   OPENAI_BASE_URL=https://api.openai.com/v1   # or any OpenAI-compatible gateway
+   OPENAI_MODEL=gpt-4o-mini                    # any chat model the gateway supports
+   ```
+   > `.env` is git-ignored — your key is never committed.
 
-   # Open frontend in browser
-   cd ../frontend
-   python -m http.server 8000
+4. **Run locally** — one command serves both frontend and the API:
+   ```bash
+   python dev_server.py
    # Visit http://localhost:8000
    ```
+   `dev_server.py` serves `frontend/index.html` and proxies `POST /api/path-expand`
+   to the same handler Vercel runs in production.
 
-### Deployment
-- **Vercel**: Automatic deployment from main branch
-- **Docker**: See deployment guide in `docs/DEPLOY_GUIDE.md`
+### Deployment (Vercel)
+
+This project is **not** a static-only site — it needs the Python function, so
+GitHub Pages will not work. Deploy on Vercel:
+
+1. Push this repo to GitHub.
+2. On [vercel.com](https://vercel.com), "Add New Project" → import this GitHub repo.
+3. In the project's **Settings → Environment Variables**, add
+   `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`.
+4. Deploy. Vercel reads `vercel.json` and hosts the static frontend + Python
+   function together, giving you a public `*.vercel.app` link.
+
+> ⚠️ **Cost note:** the `/api/path-expand` endpoint is public and unauthenticated.
+> Anyone with your deployed link can trigger LLM calls billed to your key.
+> Add rate-limiting or access control before sharing widely.
 
 ---
 
